@@ -7,6 +7,8 @@
 #include <ctime>
 #include <iomanip>
 #include <regex>
+#include "include/CLI/CLI.hpp"
+// #include <CLI.hpp>
 
 using namespace std;
 
@@ -31,6 +33,22 @@ class attributesManager
         void printAttributes();
 };
 
+class node_part;
+class node_dir;
+
+bool isValidNameFile(string name){
+    regex partitionRegex("^[a-zA-Z0-9_-]+\\.[a-zA-Z0-9]+$");
+    return regex_match(name, partitionRegex);
+}
+bool isValidNamedir(string name){
+    regex partitionRegex("^[a-zA-Z0-9_-]+$");
+    return regex_match(name, partitionRegex);
+}
+bool isValidNamepart(string name){
+    regex partitionRegex("^[a-zA-Z0-9_-]+:$");
+    return regex_match(name, partitionRegex);
+}
+
 //class node 
 class node
 {
@@ -42,8 +60,6 @@ class node
         node* Parent;
     public:
         node(string name){
-            if(isValidName(name)) this->Name=name; 
-            else throw invalid_argument("invalid name format: "+name);
             time_t Time_zone=time(nullptr);
             this->Date=localtime(&Time_zone);
             this->Size=0;
@@ -54,20 +70,18 @@ class node
         attributesManager getAttributes() {return this->Att;}
         tm* getDate(){ return this->Date; }
         int getSize(){return this->Size;}
-        virtual int getSize()=0;
         virtual bool isValidName(string name)=0;
-        void setParent(parentObserver* parent){
+        void setParent(node* parent){
             this->Parent=parent;
         }
-        string getDatestr(){
-            string s = put_time(Date,"%Y-%m-%d"); 
-            return s;
+        void getDatestr(){
+            cout<< put_time(Date,"%Y-%m-%d"); 
         }
         virtual void add(node* component) { throw runtime_error("Cannot add to this component"); }
         virtual void remove(node* component) { throw runtime_error("Cannot remove from this component"); }
         void notifyParent(int sizeChange) {
             if (this->Parent) {
-                Parent->update(sizeChange); // اطلاع‌رسانی به والد
+                Parent->updateSize(sizeChange); // اطلاع‌رسانی به والد
             }
         }
         void updateSize(int sizeChange) {
@@ -82,11 +96,11 @@ class node_file : public node
     private:
         node_file* Next;
     public:
-        node_file(string name, int size) :node(name) {
+        node_file(string name, int size) : node(isValidName(name) ? name : throw invalid_argument("invalid name format: "+name)) {
             this->Next=NULL;
             this->Size=size;
         }
-        node_file(string name, int size, int att) : node(name) {
+        node_file(string name, int size, int att) : node(isValidName(name) ? name : throw invalid_argument("invalid name format: "+name)) {
             this->Size=size;
             this->Att=attributesManager(att);
             this->Next=NULL;
@@ -109,7 +123,7 @@ class node_dir: public node
         node_dir* Left;
         node_file* Right;
     public:
-        node_dir(string name):node(name){
+        node_dir(string name) : node(isValidName(name) ? name : throw invalid_argument("invalid name format: "+name)) {
             this->Next=NULL;
             this->Left=NULL;
             this->Right=NULL;
@@ -138,7 +152,7 @@ class node_part: public node
         node_dir* Left;
         node_file* Right;
     public:
-        node_part(string name,int asize):node(name){
+        node_part(string name,int asize) : node(isValidName(name) ? name : throw invalid_argument("invalid name format: "+name)){ 
             this->ASize=asize;
             this->Left=NULL;
             this->Right=NULL;
@@ -182,7 +196,172 @@ class forst
         ~forst(){};
 };
 
-int main(){
+class file_manager
+{
+    private:
+        string CurrentPath;
+        node_part* Root;
+        node* CurrentNode;
+    public:
+        file_manager(node_part* root){
+            this->CurrentPath= root->getName() + "/";
+            this->Root=root;
+            CurrentNode=root;
+        }
+        ~file_manager(){};
+        void setCurrentNode(node* cnode);
+        node* getCurrentNode(){return this->CurrentNode;}
+        node_part* getRoot(){return this->Root;}
+        string getCurrentPath(){return this->CurrentPath;}
+        void updateCurrentPath();
+
+};
+
+// strategy interface
+
+class command_strategy {
+    private:
+        file_manager* FileManager;
+    public:
+        command_strategy(file_manager* fm):FileManager(fm){}
+        virtual void execute() = 0;
+        virtual ~command_strategy() = default;
+};
+
+// strateges
+
+// class cd_command
+// {
+//     private:
+//         /* data */
+//     public:
+//         cd_command(/* args */);
+//         ~cd_command();
+// };
+
+// class create_file_command : public command_strategy {
+//     private:
+//         string fileName;
+//         int fileSize;
+//         string filePath;
+
+//     public:
+//         CreateFileCommand(const string& name, int size, const string& path)
+//             : fileName(name), fileSize(size), filePath(path) {}
+
+//         void execute() override {
+//             cout << "Creating file..." << endl;
+//             cout << "Name: " << fileName << endl;
+//             cout << "Size: " << fileSize << " KB" << endl;
+//             if (!filePath.empty()) {
+//                 cout << "Path: " << filePath << endl;
+//             } else {
+//                 cout << "Path: (current directory)" << endl;
+//             }
+//             cout << "File created successfully!" << endl;
+//         }
+// };
+
+// class create_folder_command : public command_strategy {
+//     private:
+//         string folderName;
+//         string folderPath;
+
+//     public:
+//         CreateFolderCommand(const string& name, const string& path)
+//             : folderName(name), folderPath(path) {}
+
+//         void execute() override {
+//             cout << "Creating folder..." << endl;
+//             cout << "Name: " << folderName << endl;
+//             if (!folderPath.empty()) {
+//                 cout << "Path: " << folderPath << endl;
+//             } else {
+//                 cout << "Path: (current directory)" << endl;
+//             }
+//             cout << "Folder created successfully!" << endl;
+//         }
+// };
+
+
+
+// camand manager
+
+class command_manager {
+    private:
+        command_strategy* strategy; // اشاره‌گر به استراتژی فعلی
+
+    public:
+        void setStrategy(command_strategy* newStrategy) {
+            strategy = newStrategy;
+        }
+        void executeCommand() {
+            if (strategy) {
+                strategy->execute();
+            } else {
+                cout << "No command strategy set!" << endl;
+            }
+        }
+};
+
+
+int main(int argc, char** argv){
+    CLI::App app{"file system manager CLI"};
+
+    string cdPath;
+    auto cdCommand=app.add_subcommand("CD","go path");
+    cdCommand->add_option("path",cdPath,"path directory")->required();
+    
+    cdCommand->callback([&](){
+
+    });
+
+    string pathCreate,typeCreate;
+    int sizeCreate;
+    attributes attCreate;
+    auto createCommand=app.add_subcommand("Create","create file or directory");
+    createCommand->add_option("type",typeCreate,"type of item (File/Dir)")->required();
+    createCommand->add_option("path",pathCreate,"path to create file or folder if just type name create in current path")->required();
+    createCommand->add_option("size",sizeCreate,"size just for file reguired");
+    createCommand->add_option("");
+
+    createCommand->callback([&](){
+
+    });
+
+
+    string pathDelete;
+    auto deleteCommand=app.add_subcommand("Delete","delete file or directory");
+    deleteCommand->add_option("path",pathDelete,"path for delete file or directoty. if just type name delete in current path");
+
+    deleteCommand->callback([&](){
+
+    });
+
+
+    auto renameCommand=app.add_subcommand("Rename","rename file or directory");
+
+
+    string input;
+    cout << "File Manager CLI" << endl;
+    cout << "Type 'exit' to quit." << endl;
+
+    while (true) {
+        cout << "> ";
+        getline(cin, input); // Get input from user
+
+        if (input == "exit") {
+            cout << "Exiting CLI." << endl;
+            break;
+        }
+        try {
+            app.parse(input);
+        } catch (const CLI::ParseError& e) {
+            cerr << "Error: " << e.what() << endl;
+        }
+        
+    }
+
     return 0;
 }
 
@@ -302,10 +481,10 @@ node_file* node_part::getLastFile(node_file* first){
     return current;
 }
 //add child to left if node type is directory and add to right if node type is file
-void node_part::add(node* copmonent){
+void node_part::add(node* component){
     if (node_dir* dir=dynamic_cast<node_dir*>(component))
     {
-        if(!(this->getLeft())) this->setNext(dir);
+        if(!(this->getLeft())) this->setLeft(dir);
         else (this->getLastDir(this->getLeft()))->setNext(dir);
     }else if (node_file* file=dynamic_cast<node_file*>(component))
     {
