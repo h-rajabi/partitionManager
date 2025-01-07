@@ -332,14 +332,75 @@ int main(int argc, char** argv){
 
     string pathDelete;
     auto deleteCommand=app.add_subcommand("Delete","delete file or directory");
-    deleteCommand->add_option("path",pathDelete,"path for delete file or directoty. if just type name delete in current path");
+    deleteCommand->add_option("path",pathDelete,"path for delete file or directoty. if just type name delete in current path")->required();
 
     deleteCommand->callback([&](){
 
     });
 
-
+    string pathRename,nameRename;
     auto renameCommand=app.add_subcommand("Rename","rename file or directory");
+    renameCommand->add_option("path",pathRename,"path directory or file")->required();
+    renameCommand->add_option("name",nameRename,"name file or directory fo rename")->required();
+
+    renameCommand->callback([&](){
+
+    });
+
+    string pathDir;
+    auto dirCommand=app.add_subcommand("Dir","show all file and directory in path");
+    dirCommand->add_option("path",pathDir,"path to show dir and files (optional)");
+
+    dirCommand->callback([&](){
+
+    });
+
+    string pathFind,nameFind;
+    auto findCommand=app.add_subcommand("Find","find somthing in path");
+    findCommand->add_option("path",pathFind,"paht to serach here (optional)");
+    findCommand->add_option("name",nameFind,"name to serach in path")->required();
+
+    findCommand->callback([&](){
+
+    });
+
+    auto treeViewCommand=app.add_subcommand("TreeView","show all file and directory in partition");
+
+    treeViewCommand->callback([&](){
+
+    });
+
+
+    string pathChange;
+    int sizeChange;
+    attributes firstChange,secondChange;
+    auto changeCommand=app.add_subcommand("Change","change attribute and size");
+    changeCommand->add_option("path",pathChange,"path file or directory to change size or atributes")->required();
+    changeCommand->add_option("size",sizeChange,"size just for file");
+    changeCommand->add_option("fa",firstChange,"first atribute r w h");
+    changeCommand->add_option("sa",secondChange,"first atribute r w h");
+
+    changeCommand->callback([&](){
+
+    });
+
+    string currentPathCopy,nextPathCopy;
+    auto copyCommand=app.add_subcommand("Copy","copy file or directory to cpath");
+    copyCommand->add_option("path",currentPathCopy,"path to copy file or directory (if null copy current directory)");
+    copyCommand->add_option("tpath",nextPathCopy,"path to copy file or directory here")->required();
+
+    copyCommand->callback([&](){
+
+    });
+
+    string currentPathMove,nextPathMove;
+    auto moveCommand=app.add_subcommand("Move","move file or directory to move Path");
+    moveCommand->add_option("path",currentPathMove,"current path to move file or directory if null move current directory");
+    moveCommand->add_option("tpath",nextPathMove,"path for move here")->required();
+
+    moveCommand->callback([&](){
+
+    });
 
 
     string input;
