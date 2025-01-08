@@ -8,6 +8,7 @@
 #include <iomanip>
 #include <regex>
 #include "include/CLI/CLI.hpp"
+#include <filesystem>
 // #include <CLI.hpp>
 
 using namespace std;
@@ -33,21 +34,81 @@ class attributesManager
         void printAttributes();
 };
 
+enum pathType{
+    PartitionRoot, //path start with partition
+    PartitionRootWithFile, //path start with partition woth file 
+    RelativePath, //path just include directory
+    RelativePathWithFile,// path start with directory and havefile
+    Invalid // invalid path
+};
+
+struct pathInfo {
+    pathType type;            // نوع مسیر
+    string partition;         // نام پارتیشن (اگر موجود باشد)
+    vector<string> directories;       // مسیر دایرکتوری‌ها
+    string fileName;          // نام فایل (اگر موجود باشد)
+};
+
 class node_part;
 class node_dir;
 
+//validition inputs functons
+// validation file name
 bool isValidNameFile(string name){
-    regex partitionRegex("^[a-zA-Z0-9_-]+\\.[a-zA-Z0-9]+$");
+    regex partitionRegex("^[a-zA-Z0-9_-]+(\\.[a-zA-Z0-9]+)$");
     return regex_match(name, partitionRegex);
-}
+} 
+
+//validation directory name 
 bool isValidNamedir(string name){
     regex partitionRegex("^[a-zA-Z0-9_-]+$");
     return regex_match(name, partitionRegex);
 }
+
+//validtion partition name
 bool isValidNamepart(string name){
-    regex partitionRegex("^[a-zA-Z0-9_-]+:$");
+    regex partitionRegex("^[a-zA-Z]+:$");
     return regex_match(name, partitionRegex);
 }
+
+
+// analyze path function
+pathInfo analyzePath(string Path); 
+
+// command handler functions
+// create and exicute command
+void command();
+
+// handler cd command
+void cdCommandHandler(string path);
+
+//handler create command
+void createCommandHandler(string path, string type, int size, string att);
+
+//handler delete command
+void deleteCommandHandler(string path);
+
+// handler rename command
+void renameCommandHandler(string path, string newName);
+
+//handler Dir command
+void dirCommandHandler(string path);
+
+//handler find command
+void findCommandHandler(string path, string name);
+
+//handler tree view command
+void treeViewCommandHandler();
+
+//handler change Command
+void changeCommandHandler(string path, int size, string att);
+
+//handler copy Command
+void copyCommandHandler(string path, string next);
+
+// handler move command
+void moveCommandHandler(string path, string next);
+
 
 //class node 
 class node
@@ -283,8 +344,6 @@ class command_strategy {
 //         }
 // };
 
-
-
 // camand manager
 
 class command_manager {
@@ -305,25 +364,105 @@ class command_manager {
 };
 
 
-int main(int argc, char** argv){
+int main(){ 
+    string input;
+    pathInfo p ;
+    // analyzePath(input);
+    
+    while (true) {
+        cout << ">";
+        getline(cin, input); // Get input from user
+        cout<<"enter :"<<input<<endl;
+        p=analyzePath(input);
+        cout<<endl;
+    }
+    
+    // command();
+    return 0;
+}
+
+pathInfo analyzePath(string Path) {
+    using namespace std::filesystem;
+
+    pathInfo info = {Invalid, "", {}, ""};
+    path p(Path);
+    
+    regex windowspartition("^[a-zA-Z]:/.*");
+    if (regex_match(Path,windowspartition))
+    {   
+        size_t partitionEnd = Path.find(":/");
+        info.partition = Path.substr(0, partitionEnd + 1); // نام پارتیشن را جدا می‌کنیم
+        Path = Path.substr(partitionEnd + 2); // حذف پارتیشن از ابتدای مسیر
+        p = Path;
+        info.type=pathType::PartitionRoot;
+    }else if (p.has_root_directory())
+    {
+        Path=Path.substr(1);
+        p=Path;
+    }else if(p.has_relative_path()){
+        info.type=pathType::RelativePath;        
+    }else {
+        cout << "Invalid: Path does not match any valid format!" << endl;
+        return info;
+    }
+
+    vector<string> parts;
+    for (const auto& part:p)
+    {
+        parts.push_back(part.string());
+    }
+    
+    for (size_t i = 0; i < parts.size(); i++)
+    {
+        if (!isValidNamedir(parts[i]))
+        {
+            if (i == parts.size()-1)
+            {
+                if (isValidNameFile(parts[i]))
+                {   
+                    if(info.type==pathType::PartitionRoot) info.type=pathType::PartitionRootWithFile;
+                    else info.type=pathType::RelativePathWithFile;
+                    info.fileName=parts[i];
+                    return info;
+                }else if (parts[i].empty())
+                {
+                    break;   
+                }else {
+                    info.type=pathType::Invalid;
+                    cout<<"invalid path format!\n";
+                    return info;
+                }
+            }else {
+                cout<<"invalid path format! a file or partition can`t be in middle of path \n";
+                info.type=pathType::Invalid;
+                return info;
+            }
+        }else
+        {
+            info.directories.push_back(parts[i]);
+        }
+    }
+    return info;
+}
+
+void command(){
     CLI::App app{"file system manager CLI"};
 
     string cdPath;
     auto cdCommand=app.add_subcommand("CD","go path");
-    cdCommand->add_option("path",cdPath,"path directory")->required();
+    cdCommand->add_option("path",cdPath,"path directory");
     
     cdCommand->callback([&](){
-
+        cdCommandHandler(cdPath);
     });
 
-    string pathCreate,typeCreate;
+    string pathCreate,typeCreate,attCreate;
     int sizeCreate;
-    attributes attCreate;
     auto createCommand=app.add_subcommand("Create","create file or directory");
     createCommand->add_option("type",typeCreate,"type of item (File/Dir)")->required();
-    createCommand->add_option("path",pathCreate,"path to create file or folder if just type name create in current path")->required();
+    createCommand->add_option("path",pathCreate,"path to create file or folder if just type name create in current path");
     createCommand->add_option("size",sizeCreate,"size just for file reguired");
-    createCommand->add_option("");
+    createCommand->add_option("attribute",attCreate,"attribute for acsses level (rwh)");
 
     createCommand->callback([&](){
 
@@ -340,7 +479,7 @@ int main(int argc, char** argv){
 
     string pathRename,nameRename;
     auto renameCommand=app.add_subcommand("Rename","rename file or directory");
-    renameCommand->add_option("path",pathRename,"path directory or file")->required();
+    renameCommand->add_option("path",pathRename,"path directory or file");
     renameCommand->add_option("name",nameRename,"name file or directory fo rename")->required();
 
     renameCommand->callback([&](){
@@ -371,14 +510,12 @@ int main(int argc, char** argv){
     });
 
 
-    string pathChange;
+    string pathChange,attChange;
     int sizeChange;
-    attributes firstChange,secondChange;
     auto changeCommand=app.add_subcommand("Change","change attribute and size");
     changeCommand->add_option("path",pathChange,"path file or directory to change size or atributes")->required();
     changeCommand->add_option("size",sizeChange,"size just for file");
-    changeCommand->add_option("fa",firstChange,"first atribute r w h");
-    changeCommand->add_option("sa",secondChange,"first atribute r w h");
+    changeCommand->add_option("atribute",attChange,"acsses levle atribute (rwh)");
 
     changeCommand->callback([&](){
 
@@ -418,13 +555,42 @@ int main(int argc, char** argv){
         try {
             app.parse(input);
         } catch (const CLI::ParseError& e) {
-            cerr << "Error: " << e.what() << endl;
+            cout << "Error: " << e.get_name() << endl;
         }
         
     }
-
-    return 0;
 }
+
+void cdCommandHandler(string path){
+    if(path.empty()) cout<<"path empty\n";
+    else cout<<path<<endl;
+}
+
+void createCommandHandler(string path, string type, int size, string att){
+
+}
+
+void deleteCommandHandler(string path){
+
+}
+
+void renameCommandHandler(string path, string newName){
+
+}
+
+void dirCommandHandler(string path){}
+
+void findCommandHandler(string path, string name){}
+
+void treeViewCommandHandler(){}
+
+void changeCommandHandler(string path, int size, string att){}
+
+void copyCommandHandler(string path, string next){}
+
+void moveCommandHandler(string path, string next){}
+
+
 
 //methods class attributesManager
 
