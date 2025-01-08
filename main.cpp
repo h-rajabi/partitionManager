@@ -41,6 +41,7 @@ enum pathType{
     RelativePathWithFile,// path start with directory and havefile
     Directory,  //just one Directory
     File,   //just on file
+    Current, //if path is null
     Invalid // invalid path
 };
 
@@ -127,6 +128,7 @@ class node
             this->Date=localtime(&Time_zone);
             this->Size=0;
             this->Parent=NULL;
+            this->Name=name;
         }
         virtual ~node(){}
         string getName(){return this->Name;}
@@ -214,11 +216,13 @@ class node_part: public node
         int ASize;//alocated size
         node_dir* Left;
         node_file* Right;
+        node_part* Next;
     public:
         node_part(string name,int asize) : node(isValidName(name) ? name : throw invalid_argument("invalid name format: "+name)){ 
             this->ASize=asize;
             this->Left=NULL;
             this->Right=NULL;
+            this->Next=NULL;
         }
         ~node_part(){};
         bool isValidName(string name) override {
@@ -227,12 +231,19 @@ class node_part: public node
         }
         void setLeft(node_dir* left);
         void setRight(node_file* right);
+        void setNext(node_part* next){
+            this->Next=next;
+        }
+        node_part* getNext(){
+            return this->Next;
+        }
         node_dir* getLeft(){
             return this->Left;
         }
         node_file* getRight(){
             return this->Right;
         }
+        string getName();
         node_dir* getLastDir(node_dir* first);
         node_file* getLastFile(node_file* first);
         void add(node* component) override;
@@ -245,109 +256,121 @@ class tree
     private:
         node_part* Root;
     public:
-        tree(/* args */);
+        node_part* getRoot(){
+            return this->Root;
+        }
+        tree(node_part* root){
+            this->Root=root;
+        };
         ~tree(){};
-};
-
-class forst
-{
-    private:
-        tree* First;
-        tree* Next;
-    public:
-        forst(/* args */);
-        ~forst(){};
 };
 
 class file_manager
 {
     private:
+        static file_manager* instance;
         string CurrentPath;
-        node_part* Root;
+        tree* Root;
         node* CurrentNode;
-    public:
-        file_manager(node_part* root){
-            this->CurrentPath= root->getName() + "/";
+        file_manager(tree* root) {
             this->Root=root;
-            CurrentNode=root;
+            this->CurrentNode=root->getRoot();
+            this->CurrentPath=this->CurrentNode->getName();
+        }
+    public:
+        static file_manager* getInstance(tree* root=nullptr) {
+            if (instance == nullptr) {
+                instance = new file_manager(root);
+            }
+            return instance;
         }
         ~file_manager(){};
         void setCurrentNode(node* cnode);
         node* getCurrentNode(){return this->CurrentNode;}
-        node_part* getRoot(){return this->Root;}
-        string getCurrentPath(){return this->CurrentPath;}
-        void updateCurrentPath();
+        tree* getRoot(){return this->Root;}
+        string getCurrentPath(){
+            return this->CurrentPath;
+        }
+        // void updateCurrentPath();
+        file_manager(const file_manager&) = delete;
+        file_manager& operator=(const file_manager&) = delete;
 
 };
 
 // strategy interface
 
 class command_strategy {
-    private:
+    protected:
         file_manager* FileManager;
     public:
-        command_strategy(file_manager* fm):FileManager(fm){}
+        command_strategy(){
+            this->FileManager=file_manager::getInstance();
+        }
         virtual void execute() = 0;
         virtual ~command_strategy() = default;
 };
 
 // strateges
 
-// class cd_command
-// {
-//     private:
-//         /* data */
-//     public:
-//         cd_command(/* args */);
-//         ~cd_command();
-// };
+class cd_command : public command_strategy
+{
+    private:
+        pathInfo Path;
+    public:
+        cd_command(pathInfo path):command_strategy(){
+            this->Path=path;
+        }
+        ~cd_command(){};
+        void setPath(pathInfo path);
+        void execute() override;
+};
 
-// class create_file_command : public command_strategy {
-//     private:
-//         string fileName;
-//         int fileSize;
-//         string filePath;
+/*
+class create_file_command : public command_strategy {
+    private:
+        string fileName;
+        int fileSize;
+        string filePath;
 
-//     public:
-//         CreateFileCommand(const string& name, int size, const string& path)
-//             : fileName(name), fileSize(size), filePath(path) {}
+    public:
+        CreateFileCommand(const string& name, int size, const string& path){}
+        void execute() override {
+            cout << "Creating file..." << endl;
+            cout << "Name: " << fileName << endl;
+            cout << "Size: " << fileSize << " KB" << endl;
+            if (!filePath.empty()) {
+                cout << "Path: " << filePath << endl;
+            } else {
+                cout << "Path: (current directory)" << endl;
+            }
+            cout << "File created successfully!" << endl;
+        }
+};
 
-//         void execute() override {
-//             cout << "Creating file..." << endl;
-//             cout << "Name: " << fileName << endl;
-//             cout << "Size: " << fileSize << " KB" << endl;
-//             if (!filePath.empty()) {
-//                 cout << "Path: " << filePath << endl;
-//             } else {
-//                 cout << "Path: (current directory)" << endl;
-//             }
-//             cout << "File created successfully!" << endl;
-//         }
-// };
+class create_folder_command : public command_strategy {
+    private:
+        string folderName;
+        string folderPath;
 
-// class create_folder_command : public command_strategy {
-//     private:
-//         string folderName;
-//         string folderPath;
+    public:
+        CreateFolderCommand(const string& name, const string& path)
+            : folderName(name), folderPath(path) {}
 
-//     public:
-//         CreateFolderCommand(const string& name, const string& path)
-//             : folderName(name), folderPath(path) {}
-
-//         void execute() override {
-//             cout << "Creating folder..." << endl;
-//             cout << "Name: " << folderName << endl;
-//             if (!folderPath.empty()) {
-//                 cout << "Path: " << folderPath << endl;
-//             } else {
-//                 cout << "Path: (current directory)" << endl;
-//             }
-//             cout << "Folder created successfully!" << endl;
-//         }
-// };
+        void execute() override {
+            cout << "Creating folder..." << endl;
+            cout << "Name: " << folderName << endl;
+            if (!folderPath.empty()) {
+                cout << "Path: " << folderPath << endl;
+            } else {
+                cout << "Path: (current directory)" << endl;
+            }
+            cout << "Folder created successfully!" << endl;
+        }
+};
+*/
 
 // camand manager
-
+/*
 class command_manager {
     private:
         command_strategy* strategy; // اشاره‌گر به استراتژی فعلی
@@ -364,23 +387,18 @@ class command_manager {
             }
         }
 };
+*/
 
+file_manager* file_manager::instance = nullptr;
 
 int main(){ 
-    string input;
-    pathInfo p ;
-    // analyzePath(input);
+
+    node_part* p=new node_part("C:",1024);
+    tree* t=new tree(p);
+    file_manager* fm = file_manager::getInstance(t);
+
+    command();
     
-    while (true) {
-        cout << ">";
-        getline(cin, input); // Get input from user
-        cout<<"enter :"<<input<<endl;
-        p=analyzePath(input);
-        cout<<"type: "<<p.fileName;
-        cout<<endl;
-    }
-    
-    // command();
     return 0;
 }
 
@@ -476,6 +494,7 @@ void command(){
     
     cdCommand->callback([&](){
         cdCommandHandler(cdPath);
+        // cout<<"cd command\n";
     });
 
     string pathCreate,typeCreate,attCreate;
@@ -565,9 +584,11 @@ void command(){
     string input;
     cout << "File Manager CLI" << endl;
     cout << "Type 'exit' to quit." << endl;
-
+    file_manager* fm =file_manager::getInstance();
+    cout<<"path: "<<fm->getCurrentPath()<<endl;
     while (true) {
-        cout << "> ";
+        cout<<fm->getCurrentPath()<<">";
+        // cout<<">";
         getline(cin, input); // Get input from user
 
         if (input == "exit") {
@@ -584,8 +605,22 @@ void command(){
 }
 
 void cdCommandHandler(string path){
-    if(path.empty()) cout<<"path empty\n";
-    else cout<<path<<endl;
+
+    pathInfo pi={pathType::Current,"",{},""};
+    cd_command cd(pi);
+    if(path.empty()) {
+        cd.execute();
+    }
+    else{
+        pi=analyzePath(path);
+        if (pi.type==pathType::Invalid)
+        {
+            return;
+        }else{
+            cd.setPath(pi);
+            cd.execute();
+        }
+    }
 }
 
 void createCommandHandler(string path, string type, int size, string att){
@@ -612,6 +647,30 @@ void copyCommandHandler(string path, string next){}
 
 void moveCommandHandler(string path, string next){}
 
+
+//method file manger
+
+void file_manager::setCurrentNode(node* cnode){
+    this->CurrentNode=cnode;
+}
+
+// execute cd command
+
+void cd_command::setPath(pathInfo path){
+    this->Path=path;
+}
+void cd_command::execute(){
+    if (this->Path.type==pathType::Current)
+    {   
+        node* cn= this->FileManager->getRoot()->getRoot();
+        this->FileManager->setCurrentNode(cn);
+    }else
+    {
+        cout<<"else\n";
+    }
+    
+    
+}
 
 
 //methods class attributesManager
@@ -642,7 +701,7 @@ void node_file::setSize(int size, node_part* root ){
     int changeSize=size - this->Size;
     if (changeSize > 0 ) {
         if (!(root->canFitSize(changeSize)))
-            throw runtime_error("partition "+root->getName()+" not enough space!");
+            throw runtime_error("partition not enough space!");
     }
     notifyParent(changeSize);
 }
@@ -742,4 +801,7 @@ void node_part::add(node* component){
     }else throw invalid_argument("Unsupported node type for partition!");
 }
 
+string node_part::getName(){
+    return this->Name;
+}
 
