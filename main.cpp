@@ -39,6 +39,8 @@ enum pathType{
     PartitionRootWithFile, //path start with partition woth file 
     RelativePath, //path just include directory
     RelativePathWithFile,// path start with directory and havefile
+    Directory,  //just one Directory
+    File,   //just on file
     Invalid // invalid path
 };
 
@@ -374,6 +376,7 @@ int main(){
         getline(cin, input); // Get input from user
         cout<<"enter :"<<input<<endl;
         p=analyzePath(input);
+        cout<<"type: "<<p.fileName;
         cout<<endl;
     }
     
@@ -411,37 +414,56 @@ pathInfo analyzePath(string Path) {
     {
         parts.push_back(part.string());
     }
-    
-    for (size_t i = 0; i < parts.size(); i++)
+
+    if (parts.size()==1)
     {
-        if (!isValidNamedir(parts[i]))
+        if (isValidNamedir(parts[0]))
         {
-            if (i == parts.size()-1)
-            {
-                if (isValidNameFile(parts[i]))
-                {   
-                    if(info.type==pathType::PartitionRoot) info.type=pathType::PartitionRootWithFile;
-                    else info.type=pathType::RelativePathWithFile;
-                    info.fileName=parts[i];
-                    return info;
-                }else if (parts[i].empty())
-                {
-                    break;   
-                }else {
-                    info.type=pathType::Invalid;
-                    cout<<"invalid path format!\n";
-                    return info;
-                }
-            }else {
-                cout<<"invalid path format! a file or partition can`t be in middle of path \n";
-                info.type=pathType::Invalid;
-                return info;
-            }
+            info.type=pathType::Directory;
+            info.directories.push_back(parts[0]);
+            return info;
+        }else if(isValidNameFile(parts[0])){
+            info.type=pathType::File;
+            info.fileName=parts[0];
+            return info;
         }else
         {
-            info.directories.push_back(parts[i]);
+            info.type=pathType::Invalid;
+            cout<<"invalid path!\n";
+            return info;
         }
-    }
+    }else 
+        for (size_t i = 0; i < parts.size(); i++)
+            {
+                if (!isValidNamedir(parts[i]))
+                {
+                    if (i == parts.size()-1)
+                    {
+                        if (isValidNameFile(parts[i]))
+                        {   
+                            if(info.type==pathType::PartitionRoot) info.type=pathType::PartitionRootWithFile;
+                            else info.type=pathType::RelativePathWithFile;
+                            info.fileName=parts[i];
+                            return info;
+                        }else if (parts[i].empty())
+                        {
+                            break;   
+                        }else {
+                            info.type=pathType::Invalid;
+                            cout<<"invalid path format!\n";
+                            return info;
+                        }
+                    }else {
+                        cout<<"invalid path format! a file or partition can`t be in middle of path \n";
+                        info.type=pathType::Invalid;
+                        return info;
+                    }
+                }else
+                {
+                    info.directories.push_back(parts[i]);
+                }
+            }
+    
     return info;
 }
 
@@ -460,7 +482,7 @@ void command(){
     int sizeCreate;
     auto createCommand=app.add_subcommand("Create","create file or directory");
     createCommand->add_option("type",typeCreate,"type of item (File/Dir)")->required();
-    createCommand->add_option("path",pathCreate,"path to create file or folder if just type name create in current path");
+    createCommand->add_option("path",pathCreate,"path to create file or folder if just type name create in current path")->required();
     createCommand->add_option("size",sizeCreate,"size just for file reguired");
     createCommand->add_option("attribute",attCreate,"attribute for acsses level (rwh)");
 
