@@ -416,7 +416,7 @@ file_manager* file_manager::instance = nullptr;
 
 int main(){ 
 
-    tree* t=readFile();
+    // tree* t=readFile();
     // file_manager* fm = file_manager::getInstance(t);
 
     // command();
@@ -458,7 +458,7 @@ string cleanLine(string line) {
         }else {
             if(t) {cleaned +=" ";
                 t=false;
-            }
+            }// اگر غیر قابل چاپ بود فقط یکبار بجاش فاصله
         }
     }
     return cleaned;
@@ -469,10 +469,8 @@ parseInfo analyzeParse(string parse){
     parseInfo p;
     parse=cleanLine(parse);
     p.Level=countIndentation(parse);
-    cout<<"level:"<<p.Level<<" "<<parse<<endl;
     parse=parse.substr(p.Level*4,parse.length());
-    cout<<"after:"<<parse<<endl;
-    // node * n=convertStringToNode(parse);
+    node * n=convertStringToNode(parse);
     
     return p;
 }
@@ -481,11 +479,56 @@ parseInfo analyzeParse(string parse){
 node* convertStringToNode(string parse){
     vector<string> p;
     split(parse, p, ' ');
-    cout<<"array: ";
-    for(string i:p){
-        cout<<i<<"";
-    }
-    cout<<"\n";
+    string name;
+    tm* date=new tm{};
+    time_t Time_zone=time(nullptr);
+    date=localtime(&Time_zone);
+    int size;
+    attributesManager att;
+    string temp;
+    bool file=false;
+    regex ronlyDigit("^[0-9]*$");
+    regex rdate("^\\d{4}-(0?[1-9]|1[012])-(0?[1-9]|[12][0-9]|3[01])$");
+    regex raccsess("^[rwh]*$");
+    while (p.size() != 0 )
+    {
+        temp=p.back();
+        if(!temp.empty()){
+            if (regex_match(temp,ronlyDigit))
+            {
+                size=stoi(temp);
+                file=true;
+            }else if (regex_match(temp,rdate))
+            {
+                istringstream ss(temp);
+                ss>>get_time(date,"%Y-%m-%d");
+            }else if (regex_match(temp,raccsess))
+            {
+                for(char ch:temp){
+                    switch (ch)
+                    {
+                    case 'r':
+                        att.setAttribute(attributes::r);
+                        break;
+                    case 'w':
+                        att.setAttribute(attributes::w);
+                        break;;
+                    case 'h':
+                        att.setAttribute(attributes::h);
+                        break;    
+                    default:
+                        cout<<"error\n";
+                        break;
+                    }
+                }
+            }else{
+                if(!temp.empty() && temp!=" "){
+                    name = " "+temp+name;
+                }
+            }
+        }
+        p.pop_back();
+    }    
     return nullptr;
 }
 
