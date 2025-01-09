@@ -162,6 +162,9 @@ class node
         void setParent(node* parent){
             this->Parent=parent;
         }
+        node* getParent(){
+            return this->Parent;
+        }
         void getDatestr(){
             cout<< put_time(Date,"%Y-%m-%d"); 
         }
@@ -429,7 +432,7 @@ file_manager* file_manager::instance = nullptr;
 
 int main(){ 
 
-    // tree* t=readFile();
+    tree* t=readFile();
     // file_manager* fm = file_manager::getInstance(t);
 
     // command();
@@ -456,7 +459,36 @@ tree* readFile(){
     while (getline(InFile,parse))
     {
         p=analyzeParse(parse);
+        if (p.Level >= currentIn)//اگر زیر مجموعه باشد
+        {
+            p.Parse->setParent(current);
+            current->add(p.Parse);
+            if (node_dir* file=dynamic_cast<node_dir*>(p.Parse))
+            {    
+                current=p.Parse;
+                currentIn=p.Level;   // تغییر گره و لول فعلی
+            }
+        }else
+        {
+            int i = currentIn - p.Level +1;// محاسبه تعداد برگشت به جد
+            for (int j =0; j < i; j++)
+            {   if (current->getParent())
+                {
+                    current=current->getParent();// برگشت به جد
+                }
+            }
+            p.Parse->setParent(current);
+            current->add(p.Parse);
+            if (node_dir* file=dynamic_cast<node_dir*>(p.Parse))// اگر دایرکتوری بود نود و لول فعلی تغییر کند
+            {    
+                current=p.Parse;
+                currentIn=p.Level;   
+            }else{
+                currentIn=p.Level-1;//تغییر لول فعلی حتی اگر دایرکتوری نبود
+            }
+        }
     }
+    InFile.close();
     return nullptr;
 }
 
@@ -484,7 +516,7 @@ parseInfo analyzeParse(string parse){
     p.Level=countIndentation(parse);
     parse=parse.substr(p.Level*4,parse.length());
     node * n=convertStringToNode(parse);
-    
+    p.Parse=n;
     return p;
 }
 
@@ -543,13 +575,13 @@ node* convertStringToNode(string parse){
         p.pop_back();
     }    
     
-    
+    delete date;
     if (file)
     {
         node_file* n=new node_file(name,size,att,date);    
         return n;
     }else{
-        node_dir n=new node_dir();
+        node_dir* n=new node_dir(name,att,date);
         return n;
     }
 }
@@ -616,7 +648,12 @@ pathInfo analyzePath(string Path) {
         cout << "Invalid: Path does not match any valid format!" << endl;
         return info;
     }
-
+    if (info.type== pathType::Invalid)
+    {
+        cout<<"Invalid: Path does not match any valid format!" << endl;
+        return info;
+    }
+    
     vector<string> parts;
     for (const auto& part:p)
     {
@@ -938,6 +975,7 @@ void node_dir::add(node* component){
     {
         if (!(this->getRight())) this->setRight(file);
         else (this->getLastFile(this->getRight()))->setNext(file);
+        this->updateSize(file->getSize());
     }else throw invalid_argument("Unsupported node type for directory.");
 }
 
@@ -987,7 +1025,8 @@ void node_part::add(node* component){
     }else if (node_file* file=dynamic_cast<node_file*>(component))
     {
         if (!(this->getRight())) this->setRight(file);
-        else (this->getLastFile(this->getRight()))->setNext(file);
+        else (this->getLastFile(this->getRight()))->setNext(file);   
+        this->updateSize(file->getSize());
     }else throw invalid_argument("Unsupported node type for partition!");
 }
 
