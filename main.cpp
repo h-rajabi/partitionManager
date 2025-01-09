@@ -96,7 +96,7 @@ node* convertStringToNode(string parse);
 
 parseInfo analyzeParse(string parse);
 
-tree* readFile();
+void readFile(tree* t);
 
 // analyze path function
 pathInfo analyzePath(string Path); 
@@ -153,7 +153,10 @@ class node
             this->Parent=nullptr;
             this->Name=name;
         }
-        virtual ~node(){}
+        ~node() {
+            delete Parent;
+            delete Date;
+        }
         string getName(){return this->Name;}
         attributesManager getAttributes() {return this->Att;}
         tm* getDate(){ return this->Date; }
@@ -168,8 +171,8 @@ class node
         void getDatestr(){
             cout<< put_time(Date,"%Y-%m-%d"); 
         }
-        virtual void add(node* component) { throw runtime_error("Cannot add to this component"); }
-        virtual void remove(node* component) { throw runtime_error("Cannot remove from this component"); }
+        virtual void add(node* component) =0;
+        // virtual void remove(node* component) { throw runtime_error("Cannot remove from this component"); }
         void notifyParent(int sizeChange) {
             if (this->Parent) {
                 Parent->updateSize(sizeChange); // اطلاع‌رسانی به والد
@@ -179,6 +182,7 @@ class node
             this->Size += sizeChange;
             notifyParent(sizeChange); // به والد هم اطلاع بده
         }
+        virtual void print()=0; 
 
 };
 
@@ -202,14 +206,18 @@ class node_file : public node
             this->Size=size;
             this->Next=nullptr;
         }
-        ~node_file(){};
+        ~node_file(){
+            delete Next;
+        };
         bool isValidName(string name) override {
             regex partitionRegex("^[a-zA-Z0-9_-]+\\.[a-zA-Z0-9]+$");
             return regex_match(name, partitionRegex);
         }
+        void add(node* component) override;
         void setNext(node_file* next);
         void setSize(int size, node_part* root);
         node_file* getNext(){return this->Next;}
+        void print() override;
 
 };
 
@@ -232,7 +240,11 @@ class node_dir: public node
             this->Left=NULL;
             this->Right=NULL;
         }
-        ~node_dir(){};
+        ~node_dir(){
+            delete Next;
+            delete Left;
+            delete Right;
+        };
         bool isValidName(string name) override {
             regex partitionRegex("^[a-zA-Z0-9_-]+$");
             return regex_match(name, partitionRegex);
@@ -246,7 +258,7 @@ class node_dir: public node
         node_dir* getLastDir(node_dir* first);
         node_file* getLastFile(node_file* first);
         void add(node* component) override;
-
+        void print() override;
 };
 
 class node_part: public node
@@ -263,7 +275,11 @@ class node_part: public node
             this->Right=NULL;
             this->Next=NULL;
         }
-        ~node_part(){};
+        ~node_part(){
+            delete Left;
+            delete Right;
+            delete Next;
+        };
         bool isValidName(string name) override {
             regex partitionRegex("^[a-zA-Z0-9_-]+:$");
             return regex_match(name, partitionRegex);
@@ -288,6 +304,7 @@ class node_part: public node
         void add(node* component) override;
         int getRemainingSize();
         bool canFitSize(int size);
+        void print() override;
 };
 
 class tree
@@ -295,13 +312,20 @@ class tree
     private:
         node_part* Root;
     public:
-        node_part* getRoot(){
-            return this->Root;
-        }
         tree(node_part* root){
             this->Root=root;
         };
+        tree(){
+            this->Root=nullptr;
+        }
         ~tree(){};
+        node_part* getRoot(){
+            return this->Root;
+        }
+        void setRoot(node_part* root){
+            this->Root=root;
+        }
+        void printTree();
 };
 
 class file_manager
@@ -432,7 +456,18 @@ file_manager* file_manager::instance = nullptr;
 
 int main(){ 
 
-    tree* t=readFile();
+    try
+    {   
+        tree* t =new tree();
+        readFile(t);
+        t->printTree();        
+    }
+    catch(const std::exception& e)
+    {
+        std::cerr << e.what() << '\n';
+    }
+    
+
     // file_manager* fm = file_manager::getInstance(t);
 
     // command();
@@ -441,7 +476,7 @@ int main(){
 }
 
 
-tree* readFile(){
+void readFile(tree* t){
     ifstream InFile("in.txt");
     if(!InFile) {
         throw runtime_error("can not open file!");
@@ -475,7 +510,7 @@ tree* readFile(){
             {   if (current->getParent())
                 {
                     current=current->getParent();// برگشت به جد
-                }
+                }else break;
             }
             p.Parse->setParent(current);
             current->add(p.Parse);
@@ -489,7 +524,7 @@ tree* readFile(){
         }
     }
     InFile.close();
-    return nullptr;
+    t->setRoot(root);
 }
 
 // clean string of non chap charecter
@@ -525,7 +560,7 @@ node* convertStringToNode(string parse){
     vector<string> p;
     split(parse, p, ' ');
     string name;
-    tm* date=new tm{};
+    tm* date;
     time_t Time_zone=time(nullptr);
     date=localtime(&Time_zone);
     int size=0;
@@ -912,7 +947,7 @@ bool attributesManager::hasAttribute(attributes att){
     return this->att & att;
 }
 void attributesManager::printAttributes(){
-    cout<<"attributes :"<<(hasAttribute(r) ? "r" :"-") <<(hasAttribute(w) ? "w":"-" )<<(hasAttribute(h) ? "h" : "-") <<endl;
+    cout<<"attributes :"<<(hasAttribute(r) ? "r" :"-") <<(hasAttribute(w) ? "w":"-" )<<(hasAttribute(h) ? "h" : "-");
 }
 
 
@@ -933,7 +968,30 @@ void node_file::setSize(int size, node_part* root ){
     notifyParent(changeSize);
 }
         
+void node_file::print(){
+    cout<<this->Name;
+    this->Att.printAttributes();
+    cout<<this->Size<<endl;
+    if (this->Next)
+    {
+        this->Next->print();
+    }
+    
+}
 
+void node_file::add(node* component){
+    if (node_file* file=dynamic_cast<node_file*>(component))
+    {
+        if (!this->Next)
+        {
+            this->Next=file;
+        }else this->Next->add(file);
+        
+    }else
+    {
+        throw runtime_error("can`t add another format to file");
+    }
+}
 //methods class node_dir
 
 void node_dir::setNext(node_dir* next){
@@ -969,16 +1027,34 @@ node_file* node_dir::getLastFile(node_file* first){
 void node_dir::add(node* component){
     if (node_dir* dir=dynamic_cast<node_dir*>(component))
     {
-        if(!(this->getLeft())) this->setNext(dir);
+        if(!(this->getLeft())) this->setLeft(dir);
         else (this->getLastDir(this->getLeft()))->setNext(dir);
     }else if (node_file* file=dynamic_cast<node_file*>(component))
     {
         if (!(this->getRight())) this->setRight(file);
-        else (this->getLastFile(this->getRight()))->setNext(file);
+        // else (this->getLastFile(this->getRight()))->setNext(file);
+        else this->Right->add(file);
         this->updateSize(file->getSize());
     }else throw invalid_argument("Unsupported node type for directory.");
 }
 
+void node_dir::print(){
+    cout<<this->Name;
+    this->Att.printAttributes();
+    cout<<endl;
+    if (this->Left)
+    {
+        this->Left->print();
+    }
+    if (this->Right)
+    {
+        this->Right->print();
+    }
+    if (this->Next)
+    {
+        this->Next->print();
+    }
+}
 
 //methods class node partition
 
@@ -1025,12 +1101,27 @@ void node_part::add(node* component){
     }else if (node_file* file=dynamic_cast<node_file*>(component))
     {
         if (!(this->getRight())) this->setRight(file);
-        else (this->getLastFile(this->getRight()))->setNext(file);   
+        // else (this->getLastFile(this->getRight()))->setNext(file);   
+        else this->Right->add(file);
         this->updateSize(file->getSize());
     }else throw invalid_argument("Unsupported node type for partition!");
 }
 
 string node_part::getName(){
     return this->Name;
+}
+
+void node_part::print(){
+    cout<<this->getName()<<"\n";
+    if (this->Left)
+    {
+        this->Left->print();
+    }
+    if(this->Right)
+    {    this->Right->print();}
+}
+
+void tree::printTree(){
+    this->Root->print();
 }
 
