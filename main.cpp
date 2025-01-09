@@ -450,9 +450,15 @@ tree* readFile(){
 // clean string of non chap charecter
 string cleanLine(string line) {
     string cleaned;
+    bool t=true;
     for (char ch : line) {
         if (isprint(ch) || ch == ' ') { // فقط کاراکترهای قابل چاپ و فاصله را نگه‌دار
             cleaned += ch;
+            t=true;
+        }else {
+            if(t) {cleaned +=" ";
+                t=false;
+            }
         }
     }
     return cleaned;
@@ -463,8 +469,10 @@ parseInfo analyzeParse(string parse){
     parseInfo p;
     parse=cleanLine(parse);
     p.Level=countIndentation(parse);
-    parse=parse.substr(p.Level*4+1,parse.length());
-    node * n=convertStringToNode(parse);
+    cout<<"level:"<<p.Level<<" "<<parse<<endl;
+    parse=parse.substr(p.Level*4,parse.length());
+    cout<<"after:"<<parse<<endl;
+    // node * n=convertStringToNode(parse);
     
     return p;
 }
@@ -475,7 +483,7 @@ node* convertStringToNode(string parse){
     split(parse, p, ' ');
     cout<<"array: ";
     for(string i:p){
-        cout<<i<<" ";
+        cout<<i<<"";
     }
     cout<<"\n";
     return nullptr;
