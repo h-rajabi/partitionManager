@@ -9,9 +9,15 @@
 #include <regex>
 #include "include/CLI/CLI.hpp"
 #include <filesystem>
-// #include <CLI.hpp>
+#include <cctype>
 
 using namespace std;
+
+class node_part;
+class node_dir;
+class tree;
+class node;
+class node_file;
 
 enum attributes {
     r = 1 << 0, //0001 Read
@@ -52,8 +58,12 @@ struct pathInfo {
     string fileName;          // نام فایل (اگر موجود باشد)
 };
 
-class node_part;
-class node_dir;
+struct parseInfo
+{
+    node* Parse;
+    int Level;
+};
+
 
 //validition inputs functons
 // validation file name
@@ -74,6 +84,19 @@ bool isValidNamepart(string name){
     return regex_match(name, partitionRegex);
 }
 
+string cleanLine(string line);
+
+size_t split(const std::string &txt, std::vector<std::string> &strs, char ch);
+
+int countIndentation(string line);
+
+int convertInt(string s);
+
+node* convertStringToNode(string parse);
+
+parseInfo analyzeParse(string parse);
+
+tree* readFile();
 
 // analyze path function
 pathInfo analyzePath(string Path); 
@@ -393,13 +416,107 @@ file_manager* file_manager::instance = nullptr;
 
 int main(){ 
 
-    node_part* p=new node_part("C:",1024);
-    tree* t=new tree(p);
-    file_manager* fm = file_manager::getInstance(t);
+    tree* t=readFile();
+    // file_manager* fm = file_manager::getInstance(t);
 
-    command();
+    // command();
     
     return 0;
+}
+
+
+tree* readFile(){
+    ifstream InFile("in.txt");
+    if(!InFile) {
+        throw runtime_error("can not open file!");
+    }
+    string part,size;
+    InFile>>part>>size;
+    int Size= convertInt(size);
+
+    node_part* root=new node_part(part,Size);
+    node* current=root;
+    string parse;
+    int currentIn=0;
+    parseInfo p;
+    getline(InFile,parse);
+    while (getline(InFile,parse))
+    {
+        p=analyzeParse(parse);
+    }
+    return nullptr;
+}
+
+// clean string of non chap charecter
+string cleanLine(string line) {
+    string cleaned;
+    for (char ch : line) {
+        if (isprint(ch) || ch == ' ') { // فقط کاراکترهای قابل چاپ و فاصله را نگه‌دار
+            cleaned += ch;
+        }
+    }
+    return cleaned;
+}
+
+//analyze string and convert to node and level indentation
+parseInfo analyzeParse(string parse){
+    parseInfo p;
+    parse=cleanLine(parse);
+    p.Level=countIndentation(parse);
+    parse=parse.substr(p.Level*4+1,parse.length());
+    node * n=convertStringToNode(parse);
+    
+    return p;
+}
+
+//convert string to node
+node* convertStringToNode(string parse){
+    vector<string> p;
+    split(parse, p, ' ');
+    cout<<"array: ";
+    for(string i:p){
+        cout<<i<<" ";
+    }
+    cout<<"\n";
+    return nullptr;
+}
+
+// convert string number to int like(13,124)
+int convertInt(string s){
+    s.erase(remove(s.begin(), s.end(), ','), s.end());
+    return stoi(s);
+}
+
+// split function by own char and return size split vector 
+size_t split(const std::string &txt, std::vector<std::string> &strs, char ch)
+{
+    size_t pos = txt.find( ch );
+    size_t initialPos = 0;
+    strs.clear();
+
+    // Decompose statement
+    while( pos != std::string::npos ) {
+        strs.push_back( txt.substr( initialPos, pos - initialPos ) );
+        initialPos = pos + 1;
+
+        pos = txt.find( ch, initialPos );
+    }
+
+    // Add the last one
+    strs.push_back( txt.substr( initialPos, std::min( pos, txt.size() ) - initialPos + 1 ) );
+
+    return strs.size();
+}
+
+// شمارش تو رفتگی
+int countIndentation(string line) {
+    std::regex pattern("^([ │├└]*)"); // الگوی شروع با کاراکترهای خاص
+    std::smatch match;
+
+    if (std::regex_search(line, match, pattern)) {
+        return match[1].str().length() / 4; // طول رشته مطابقت داده‌شده را بر 4 تقسیم کنید
+    }
+    return 0; // اگر هیچ تورفتگی وجود نداشت
 }
 
 pathInfo analyzePath(string Path) {
