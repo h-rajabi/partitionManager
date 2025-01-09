@@ -460,7 +460,7 @@ int main(){
     {   
         tree* t =new tree();
         readFile(t);
-        t->printTree();        
+        t->printTree();
     }
     catch(const std::exception& e)
     {
@@ -484,45 +484,53 @@ void readFile(tree* t){
     string part,size;
     InFile>>part>>size;
     int Size= convertInt(size);
-
     node_part* root=new node_part(part,Size);
     node* current=root;
     string parse;
     int currentIn=0;
     parseInfo p;
-    getline(InFile,parse);
-    while (getline(InFile,parse))
-    {
-        p=analyzeParse(parse);
-        if (p.Level >= currentIn)//اگر زیر مجموعه باشد
-        {
-            p.Parse->setParent(current);
-            current->add(p.Parse);
-            if (node_dir* file=dynamic_cast<node_dir*>(p.Parse))
-            {    
-                current=p.Parse;
-                currentIn=p.Level;   // تغییر گره و لول فعلی
+    try
+    {   
+        getline(InFile,parse);
+        while (getline(InFile,parse))
+        {   
+            p=analyzeParse(parse);
+            if (p.Level >= currentIn)//اگر زیر مجموعه باشد
+            {
+                p.Parse->setParent(current);
+                current->add(p.Parse);
+                if (node_dir* file=dynamic_cast<node_dir*>(p.Parse))
+                {    
+                    current=p.Parse;
+                    currentIn=p.Level;   // تغییر گره و لول فعلی
+                }
+            }else
+            {
+                int i = currentIn - p.Level +1;// محاسبه تعداد برگشت به جد
+                for (int j =0; j < i; j++)
+                {   if (current->getParent())
+                    {
+                        current=current->getParent();// برگشت به جد
+                    }else break;
+                }
+                p.Parse->setParent(current);
+                current->add(p.Parse);
+                if (node_dir* file=dynamic_cast<node_dir*>(p.Parse))// اگر دایرکتوری بود نود و لول فعلی تغییر کند
+                {    
+                    current=p.Parse;
+                    currentIn=p.Level;   
+                }else{
+                    currentIn=p.Level-1;//تغییر لول فعلی حتی اگر دایرکتوری نبود
+                }
             }
-        }else
-        {
-            int i = currentIn - p.Level +1;// محاسبه تعداد برگشت به جد
-            for (int j =0; j < i; j++)
-            {   if (current->getParent())
-                {
-                    current=current->getParent();// برگشت به جد
-                }else break;
-            }
-            p.Parse->setParent(current);
-            current->add(p.Parse);
-            if (node_dir* file=dynamic_cast<node_dir*>(p.Parse))// اگر دایرکتوری بود نود و لول فعلی تغییر کند
-            {    
-                current=p.Parse;
-                currentIn=p.Level;   
-            }else{
-                currentIn=p.Level-1;//تغییر لول فعلی حتی اگر دایرکتوری نبود
-            }
-        }
+        }    
     }
+    catch(const std::exception& e)
+    {
+        std::cerr << e.what() << '\n';
+    }
+    
+    
     InFile.close();
     t->setRoot(root);
 }
@@ -550,7 +558,7 @@ parseInfo analyzeParse(string parse){
     parse=cleanLine(parse);
     p.Level=countIndentation(parse);
     parse=parse.substr(p.Level*4,parse.length());
-    node * n=convertStringToNode(parse);
+    node* n=convertStringToNode(parse);
     p.Parse=n;
     return p;
 }
@@ -610,7 +618,6 @@ node* convertStringToNode(string parse){
         p.pop_back();
     }    
     
-    delete date;
     if (file)
     {
         node_file* n=new node_file(name,size,att,date);    
@@ -947,7 +954,7 @@ bool attributesManager::hasAttribute(attributes att){
     return this->att & att;
 }
 void attributesManager::printAttributes(){
-    cout<<"attributes :"<<(hasAttribute(r) ? "r" :"-") <<(hasAttribute(w) ? "w":"-" )<<(hasAttribute(h) ? "h" : "-");
+    cout<<(hasAttribute(r) ? "r" :"-") <<(hasAttribute(w) ? "w":"-" )<<(hasAttribute(h) ? "h" : "-");
 }
 
 
