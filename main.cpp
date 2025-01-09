@@ -150,7 +150,7 @@ class node
             time_t Time_zone=time(nullptr);
             this->Date=localtime(&Time_zone);
             this->Size=0;
-            this->Parent=NULL;
+            this->Parent=nullptr;
             this->Name=name;
         }
         virtual ~node(){}
@@ -193,6 +193,12 @@ class node_file : public node
             this->Att=attributesManager(att);
             this->Next=NULL;
         }
+        node_file(string name, int size, attributesManager att, tm* date):node(name){
+            this->Att=att;
+            this->Date=date;
+            this->Size=size;
+            this->Next=nullptr;
+        }
         ~node_file(){};
         bool isValidName(string name) override {
             regex partitionRegex("^[a-zA-Z0-9_-]+\\.[a-zA-Z0-9]+$");
@@ -212,6 +218,13 @@ class node_dir: public node
         node_file* Right;
     public:
         node_dir(string name) : node(isValidName(name) ? name : throw invalid_argument("invalid name format: "+name)) {
+            this->Next=NULL;
+            this->Left=NULL;
+            this->Right=NULL;
+        }
+        node_dir(string name, attributesManager att, tm* date) : node(name){
+            this->Att=att;
+            this->Date=date;
             this->Next=NULL;
             this->Left=NULL;
             this->Right=NULL;
@@ -483,7 +496,7 @@ node* convertStringToNode(string parse){
     tm* date=new tm{};
     time_t Time_zone=time(nullptr);
     date=localtime(&Time_zone);
-    int size;
+    int size=0;
     attributesManager att;
     string temp;
     bool file=false;
@@ -529,7 +542,16 @@ node* convertStringToNode(string parse){
         }
         p.pop_back();
     }    
-    return nullptr;
+    
+    
+    if (file)
+    {
+        node_file* n=new node_file(name,size,att,date);    
+        return n;
+    }else{
+        node_dir n=new node_dir();
+        return n;
+    }
 }
 
 // convert string number to int like(13,124)
