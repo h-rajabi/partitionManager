@@ -899,8 +899,16 @@ void cdCommandHandler(string path){
         case pathType::File :
         case pathType::PartitionRootWithFile :
         case pathType::RelativePathWithFile :
-            cout<<"path format invalid just forward to directory\n";
-            break;    
+            cout<<"path format invalid just forward to directory!\n";
+            break;
+        case pathType::PartitionRoot :
+            if (pi.directories.size()==0)
+            {
+                pi={pathType::Current,"",{},""};
+                cd.setPath(pi);
+                cd.execute();
+                break;
+            }
         default:            
             cd.setPath(pi);
             cd.execute();
@@ -1001,7 +1009,6 @@ node_dir* file_manager::findCurrentDir(vector<string> dirs, node_dir* nodeD){
 
 void file_manager::setCurrentNodeToRoot(){
     this->CurrentNode=this->Root->getRoot();
-    this->setPath();
 }
 
 // execute cd command
@@ -1015,6 +1022,11 @@ void cd_command::execute(){
     {
     case pathType::Current :
         this->FileManager->setCurrentNodeToRoot();
+        this->FileManager->setPath();
+        break;
+    case pathType::PartitionRoot :
+        this->FileManager->setCurrentNodeToRoot();
+        this->FileManager->goToDir(Path.directories);
         break;
     default:
         this->FileManager->goToDir(Path.directories);
