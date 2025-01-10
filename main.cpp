@@ -42,7 +42,7 @@ class attributesManager
 
 enum pathType{
     PartitionRoot, //path start with partition
-    PartitionRootWithFile, //path start with partition woth file 
+    PartitionRootWithFile, //path start with partition with file 
     RelativePath, //path just include directory
     RelativePathWithFile,// path start with directory and havefile
     Directory,  //just one Directory
@@ -259,6 +259,7 @@ class node_dir: public node
         node_file* getLastFile(node_file* first);
         void add(node* component) override;
         void print(int ind) override;
+        node_dir* findDir(string name);
 };
 
 class node_part: public node
@@ -305,6 +306,7 @@ class node_part: public node
         int getRemainingSize();
         bool canFitSize(int size);
         void print(int ind) override;
+        node_dir* findDir(string name);
 };
 
 class tree
@@ -357,7 +359,7 @@ class file_manager
         // void updateCurrentPath();
         file_manager(const file_manager&) = delete;
         file_manager& operator=(const file_manager&) = delete;
-
+        void findCurrentDir(vector<string> dirs);
 };
 
 // strategy interface
@@ -458,24 +460,22 @@ int main(){
 
     try
     {   
-        tree* t =new tree();
-        readFile(t);
-        t->printTree();
+        // tree* t =new tree();
+        // readFile(t);
+        // t->printTree();
+        // file_manager* fm = file_manager::getInstance(t);
+        // command();
     }
     catch(const std::exception& e)
     {
         std::cerr << e.what() << '\n';
     }
-    
-
-    // file_manager* fm = file_manager::getInstance(t);
-
-    // command();
-    
     return 0;
 }
 
+// read file and create tree functions
 
+// read file and create tree
 void readFile(tree* t){
     ifstream InFile("in.txt");
     if(!InFile) {
@@ -666,6 +666,8 @@ int countIndentation(string line) {
     return 0; // اگر هیچ تورفتگی وجود نداشت
 }
 
+// command functions
+
 pathInfo analyzePath(string Path) {
     using namespace std::filesystem;
 
@@ -704,12 +706,12 @@ pathInfo analyzePath(string Path) {
 
     if (parts.size()==1)
     {
-        if (isValidNamedir(parts[0]))
+        if (isValidNamedir(parts[0]))// part just one directory 
         {
             info.type=pathType::Directory;
             info.directories.push_back(parts[0]);
             return info;
-        }else if(isValidNameFile(parts[0])){
+        }else if(isValidNameFile(parts[0])){ // part just one file
             info.type=pathType::File;
             info.fileName=parts[0];
             return info;
@@ -719,19 +721,19 @@ pathInfo analyzePath(string Path) {
             cout<<"invalid path!\n";
             return info;
         }
-    }else 
+    }else // size more than 
         for (size_t i = 0; i < parts.size(); i++)
             {
-                if (!isValidNamedir(parts[i]))
+                if (!isValidNamedir(parts[i]))// if in part have file 
                 {
-                    if (i == parts.size()-1)
+                    if (i == parts.size()-1) // check last part 
                     {
-                        if (isValidNameFile(parts[i]))
+                        if (isValidNameFile(parts[i])) // last part is file
                         {   
                             if(info.type==pathType::PartitionRoot) info.type=pathType::PartitionRootWithFile;
                             else info.type=pathType::RelativePathWithFile;
                             info.fileName=parts[i];
-                            return info;
+                            return info; 
                         }else if (parts[i].empty())
                         {
                             break;   
@@ -747,7 +749,7 @@ pathInfo analyzePath(string Path) {
                     }
                 }else
                 {
-                    info.directories.push_back(parts[i]);
+                    info.directories.push_back(parts[i]); // add part to directory list 
                 }
             }
     
@@ -758,12 +760,11 @@ void command(){
     CLI::App app{"file system manager CLI"};
 
     string cdPath;
-    auto cdCommand=app.add_subcommand("CD","go path");
+    auto cdCommand=app.add_subcommand("CD","go path if null back to root");
     cdCommand->add_option("path",cdPath,"path directory");
     
     cdCommand->callback([&](){
         cdCommandHandler(cdPath);
-        // cout<<"cd command\n";
     });
 
     string pathCreate,typeCreate,attCreate;
@@ -882,12 +883,24 @@ void cdCommandHandler(string path){
     }
     else{
         pi=analyzePath(path);
-        if (pi.type==pathType::Invalid)
+        switch (pi.type)
         {
+        case pathType::Invalid :
             return;
-        }else{
+            break;
+        case pathType::File :
+            cout<<"path format invalid just forward to directory\n";
+            break;
+        case pathType::PartitionRootWithFile :
+            cout<<"path format invalid just forward to directory\n";
+            break;
+        case pathType::RelativePathWithFile :
+            cout<<"path format invalid just forward to directory\n";
+            break;    
+        default:
             cd.setPath(pi);
             cd.execute();
+            break;
         }
     }
 }
@@ -923,19 +936,44 @@ void file_manager::setCurrentNode(node* cnode){
     this->CurrentNode=cnode;
 }
 
+void file_manager::findCurrentDir(vector<string> dirs){
+
+    if (node_part* part=dynamic_cast<node_part*>(this->CurrentNode))
+    {
+           
+    }else if (node_dir* dir=dynamic_cast<node_dir*>(this->CurrentNode))
+    {
+        
+    }else{
+        throw runtime_error("invalid current node in file manager\n");
+    }
+}
+
 // execute cd command
 
 void cd_command::setPath(pathInfo path){
     this->Path=path;
 }
 void cd_command::execute(){
-    if (this->Path.type==pathType::Current)
-    {   
+    
+    switch (Path.type)
+    {
+    case pathType::Current :
         node* cn= this->FileManager->getRoot()->getRoot();
         this->FileManager->setCurrentNode(cn);
+        break;
+    case pathType::Directory :
+        
+        break;
+    default:
+        break;
+    }
+    if (this->Path.type==pathType::Current)
+    {   
+        
     }else
     {
-        cout<<"else\n";
+        
     }
     
     
@@ -974,7 +1012,7 @@ void node_file::setSize(int size, node_part* root ){
     }
     notifyParent(changeSize);
 }
-        
+// print all files list        
 void node_file::print(int ind){
     for (size_t i = 0; i < ind; i++)
     {
@@ -988,7 +1026,7 @@ void node_file::print(int ind){
         this->Next->print(ind);
     }
 }
-
+// add file to end list
 void node_file::add(node* component){
     if (node_file* file=dynamic_cast<node_file*>(component))
     {
@@ -1002,6 +1040,8 @@ void node_file::add(node* component){
         throw runtime_error("can`t add another format to file");
     }
 }
+
+
 //methods class node_dir
 
 void node_dir::setNext(node_dir* next){
@@ -1070,6 +1110,23 @@ void node_dir::print(int ind){
         this->Next->print(ind);
     }
 }
+// find dir in sibling dir list 
+node_dir* node_dir::findDir(string name){
+    if (this->Name == name)
+    {
+        return this;
+    }
+    node_dir* current =this->Next;
+    while (current)
+    {
+        if (current->Name == name)
+        {
+            return current;
+        }
+        current=current->Next;
+    }
+    return nullptr;
+}
 
 //methods class node partition
 
@@ -1125,7 +1182,7 @@ void node_part::add(node* component){
 string node_part::getName(){
     return this->Name;
 }
-
+// print dir and all child and list 
 void node_part::print(int ind){
     cout<<this->getName()<<"\n";
     if (this->Left)
@@ -1136,6 +1193,18 @@ void node_part::print(int ind){
     {    this->Right->print(ind+1);}
 }
 
+node_dir* node_part::findDir(string name){
+    if (!this->Left)
+    {   
+        return nullptr; 
+    }
+    node_dir* find=this->Left->findDir(name);
+    return find;
+}
+
+// tree methods
+
+//print all tree 
 void tree::printTree(){
     this->Root->print(0);
 }
