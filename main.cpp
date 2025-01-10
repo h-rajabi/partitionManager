@@ -182,7 +182,7 @@ class node
             this->Size += sizeChange;
             notifyParent(sizeChange); // به والد هم اطلاع بده
         }
-        virtual void print()=0; 
+        virtual void print(int ind)=0; 
 
 };
 
@@ -217,7 +217,7 @@ class node_file : public node
         void setNext(node_file* next);
         void setSize(int size, node_part* root);
         node_file* getNext(){return this->Next;}
-        void print() override;
+        void print(int ind) override;
 
 };
 
@@ -258,7 +258,7 @@ class node_dir: public node
         node_dir* getLastDir(node_dir* first);
         node_file* getLastFile(node_file* first);
         void add(node* component) override;
-        void print() override;
+        void print(int ind) override;
 };
 
 class node_part: public node
@@ -304,7 +304,7 @@ class node_part: public node
         void add(node* component) override;
         int getRemainingSize();
         bool canFitSize(int size);
-        void print() override;
+        void print(int ind) override;
 };
 
 class tree
@@ -507,7 +507,7 @@ void readFile(tree* t){
             }else
             {
                 int i = currentIn - p.Level +1;// محاسبه تعداد برگشت به جد
-                for (int j =0; j < i; j++)
+                for (int j =0; j <= i; j++)
                 {   if (current->getParent())
                     {
                         current=current->getParent();// برگشت به جد
@@ -520,7 +520,7 @@ void readFile(tree* t){
                     current=p.Parse;
                     currentIn=p.Level;   
                 }else{
-                    currentIn=p.Level-1;//تغییر لول فعلی حتی اگر دایرکتوری نبود
+                    currentIn=p.Level;//تغییر لول فعلی حتی اگر دایرکتوری نبود
                 }
             }
         }    
@@ -975,15 +975,18 @@ void node_file::setSize(int size, node_part* root ){
     notifyParent(changeSize);
 }
         
-void node_file::print(){
-    cout<<this->Name;
+void node_file::print(int ind){
+    for (size_t i = 0; i < ind; i++)
+    {
+        cout<<"\t";
+    }
+    cout<<this->Name<<" ";
     this->Att.printAttributes();
-    cout<<this->Size<<endl;
+    cout<<" "<<this->Size<<endl;
     if (this->Next)
     {
-        this->Next->print();
+        this->Next->print(ind);
     }
-    
 }
 
 void node_file::add(node* component){
@@ -1045,21 +1048,26 @@ void node_dir::add(node* component){
     }else throw invalid_argument("Unsupported node type for directory.");
 }
 
-void node_dir::print(){
-    cout<<this->Name;
+void node_dir::print(int ind){
+    for (size_t i = 0; i < ind; i++)
+    {
+        cout<<"\t";
+    }
+    
+    cout<<this->Name<<" ";
     this->Att.printAttributes();
-    cout<<endl;
+    cout<<"\n";
     if (this->Left)
     {
-        this->Left->print();
+        this->Left->print(ind+1);
     }
     if (this->Right)
     {
-        this->Right->print();
+        this->Right->print(ind+1);
     }
     if (this->Next)
     {
-        this->Next->print();
+        this->Next->print(ind);
     }
 }
 
@@ -1118,17 +1126,17 @@ string node_part::getName(){
     return this->Name;
 }
 
-void node_part::print(){
+void node_part::print(int ind){
     cout<<this->getName()<<"\n";
     if (this->Left)
     {
-        this->Left->print();
+        this->Left->print(ind+1);
     }
     if(this->Right)
-    {    this->Right->print();}
+    {    this->Right->print(ind+1);}
 }
 
 void tree::printTree(){
-    this->Root->print();
+    this->Root->print(0);
 }
 
