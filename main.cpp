@@ -359,7 +359,12 @@ class file_manager
         // void updateCurrentPath();
         file_manager(const file_manager&) = delete;
         file_manager& operator=(const file_manager&) = delete;
-        void findCurrentDir(vector<string> dirs);
+        node_dir* findCurrentDir(vector<string> dirs, node_dir* nodeD);
+        void goToDir(vector<string> dirs);
+        void setPath(){
+            this->CurrentPath=this->CurrentNode->getName();
+        }
+        void setCurrentNodeToRoot();
 };
 
 // strategy interface
@@ -460,11 +465,11 @@ int main(){
 
     try
     {   
-        // tree* t =new tree();
-        // readFile(t);
+        tree* t =new tree();
+        readFile(t);
         // t->printTree();
-        // file_manager* fm = file_manager::getInstance(t);
-        // command();
+        file_manager* fm = file_manager::getInstance(t);
+        command();
     }
     catch(const std::exception& e)
     {
@@ -611,13 +616,13 @@ node* convertStringToNode(string parse){
                 }
             }else{
                 if(!temp.empty() && temp!=" "){
-                    name = " "+temp+name;
+                    name =" "+temp+name;// add to first name
                 }
             }
         }
         p.pop_back();
     }    
-    
+    name=name.substr(1); // clear space in first name
     if (file)
     {
         node_file* n=new node_file(name,size,att,date);    
@@ -765,6 +770,7 @@ void command(){
     
     cdCommand->callback([&](){
         cdCommandHandler(cdPath);
+        cdPath.erase();
     });
 
     string pathCreate,typeCreate,attCreate;
@@ -879,6 +885,8 @@ void cdCommandHandler(string path){
     pathInfo pi={pathType::Current,"",{},""};
     cd_command cd(pi);
     if(path.empty()) {
+        pi={pathType::Current,"",{},""};
+        cd.setPath(pi);
         cd.execute();
     }
     else{
@@ -889,15 +897,11 @@ void cdCommandHandler(string path){
             return;
             break;
         case pathType::File :
-            cout<<"path format invalid just forward to directory\n";
-            break;
         case pathType::PartitionRootWithFile :
-            cout<<"path format invalid just forward to directory\n";
-            break;
         case pathType::RelativePathWithFile :
             cout<<"path format invalid just forward to directory\n";
             break;    
-        default:
+        default:            
             cd.setPath(pi);
             cd.execute();
             break;
@@ -936,17 +940,68 @@ void file_manager::setCurrentNode(node* cnode){
     this->CurrentNode=cnode;
 }
 
-void file_manager::findCurrentDir(vector<string> dirs){
-
+void file_manager::goToDir(vector<string> dirs){
+    reverse(dirs.begin(),dirs.end());
     if (node_part* part=dynamic_cast<node_part*>(this->CurrentNode))
     {
-           
+        node_dir* d=part->getLeft();
+        if (d)
+        {
+            d=this->findCurrentDir(dirs,d);
+            if (d)
+            {
+                this->setCurrentNode(d);
+                this->setPath();
+                cout<<"done.\n";
+            }else{
+                return;
+            }
+        }else{
+            cout<<"partition not have directory!\n";
+            return;
+        }
     }else if (node_dir* dir=dynamic_cast<node_dir*>(this->CurrentNode))
     {
-        
+        dir=this->findCurrentDir(dirs,dir->getLeft());
+        if (dir)
+        {
+            this->setCurrentNode(dir);
+            this->setPath();
+            cout<<"done.\n";
+        }
+        return;
     }else{
         throw runtime_error("invalid current node in file manager\n");
+    }    
+}
+
+node_dir* file_manager::findCurrentDir(vector<string> dirs, node_dir* nodeD){
+    node_dir* current=nodeD;
+    string name=dirs.back();
+    dirs.pop_back();
+    while (current)
+    {
+        current = current->findDir(name);
+        if (!current)
+        {
+            cout<<"can`t find directory:"<<name<<endl;
+            return nullptr;
+        }
+        if (dirs.size()==0)
+        {
+            return current;
+        }
+        name=dirs.back();
+        dirs.pop_back();
+        current = current->getLeft();
     }
+    cout<<"can`t find directory:"<<name<<endl;
+    return nullptr;
+}
+
+void file_manager::setCurrentNodeToRoot(){
+    this->CurrentNode=this->Root->getRoot();
+    this->setPath();
 }
 
 // execute cd command
@@ -956,27 +1011,15 @@ void cd_command::setPath(pathInfo path){
 }
 void cd_command::execute(){
     
-    switch (Path.type)
+    switch (this->Path.type)
     {
     case pathType::Current :
-        node* cn= this->FileManager->getRoot()->getRoot();
-        this->FileManager->setCurrentNode(cn);
-        break;
-    case pathType::Directory :
-        
+        this->FileManager->setCurrentNodeToRoot();
         break;
     default:
+        this->FileManager->goToDir(Path.directories);
         break;
     }
-    if (this->Path.type==pathType::Current)
-    {   
-        
-    }else
-    {
-        
-    }
-    
-    
 }
 
 
