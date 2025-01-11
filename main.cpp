@@ -374,16 +374,18 @@ class file_manager
         void goToPath(pathInfo pinfo);// get path and set current node to input path
         void printChildDirsAndFiles(pathInfo pinfo, bool showHidden); // get path and print child files and dirs list
         void FindNameInPath(pathInfo pinfo, string name, bool showHidden);// get path and print all dir and file math to name
-        void createAndAddToTree(pathInfo pinfo, string type, string size, string att);// get path and file or directory information and create node 
+        void FindAndCreateAndAddToTree(pathInfo pinfo, string type, string size, string att);// get path and file or directory information and create node 
 
 
         node* findPathNode(pathInfo pinfo);// get path and process for find path and return find node if find
         void setCurrentNodeToRoot();// set current node to root
         node_dir* goToDir(vector<string> dirs, node* startNode);// start search from start node child and find dirs  
         node_dir* findCurrentDir(vector<string> dirs, node_dir* nodeD); // find dir in current level and if have sub find in sub list and return find node
+        node_dir* findCurrentDirInChild(string name, node* parent);// get name and find dir in child parrent 
         node_file* findCurrentFile(string name, node* startNode);// find file in child start
         void printChild(node* startNode, bool showHidden);// print child node list
         void printFindNameFromNode(node* startNode, string name, bool showHidden);// find sub name in all childes 
+        void createAndAddtoTree(string name, string size, string att, node* parrent);
         void addToTree(node* parent, node* current);
 };
 
@@ -1175,6 +1177,86 @@ void file_manager::printChildDirsAndFiles(pathInfo pinfo, bool showHidden){
         throw invalid_argument("invalid find node in print child!\n");
     }
 }
+// find path and start search
+void file_manager::FindNameInPath(pathInfo pinfo, string name, bool showHidden){
+    node* find=findPathNode(pinfo);
+    if (find)
+    {
+        this->printFindNameFromNode(find, name, showHidden);
+        cout<<"\n";
+    }
+}
+// get path info and node information and find current path and create node then add to tree
+void file_manager::FindAndCreateAndAddToTree(pathInfo pinfo, string type, string size, string att){
+    node* find=nullptr;
+    string name;
+    switch (pinfo.type)
+    {
+    case pathType::Directory :
+        find=findPathNode(pinfo);// find if directory exist in current node
+        name=pinfo.directories[0];
+        if(find){
+            cout<<"Error: directory "<<name<<" alredy exist!\n";
+            return;
+        }else{
+            createAndAddtoTree(name,size,att,this->CurrentNode);// if not exist create and add to current node
+        }
+        break;
+    case pathType::File :
+        find=findPathNode(pinfo);//find if file esxist in current node
+        name=pinfo.fileName;
+        if (find)
+        {
+            cout<<"Error: file "<<name<<" alredy exist!\n";
+            return;
+        }else{
+            createAndAddtoTree(name,size,att,this->CurrentNode);// if not exist create and add to current node
+        }
+        break;
+    case pathType::Invalid : 
+        return;
+        break;
+    case pathType::PartitionRoot :
+    case pathType::RelativePath :
+        name=pinfo.directories.back();
+        pinfo.directories.pop_back();// delete last directory for find parent
+        find=findPathNode(pinfo);
+        if (find)
+        {   
+            node_dir* c=findCurrentDirInChild(name, find);// find last directory if exist in parent
+            if (c)
+            {
+                cout<<"Error: directory "<<name<<" alredy exist!\n";
+                return;
+            }else{
+                createAndAddtoTree(name,size,att,find);// if not exist create and add to current node
+            }
+        }
+        break;
+    case pathType::PartitionRootWithFile :
+    case pathType::RelativePathWithFile :
+        name=pinfo.fileName;
+        find=findPathNode(pinfo);// find parrent node path
+        if (find)
+        {   
+            node_file* f=findCurrentFile(name,find);//find if file exist in find directory
+            if (f)
+            {
+                cout<<"Error: file "<<name<<"alredy exist!\n";
+                return ;
+            }else
+                createAndAddtoTree(name,size,att,find);// if not exist create and add to current node
+            return;
+        }else{
+            return;
+        }
+        break;
+    default:
+        cout <<"error in path type to create\n";
+        return;
+        break;
+    }
+}
 
 /* get path and process to find node(file or directory) 
  there is process start from current node or root
@@ -1194,19 +1276,21 @@ node* file_manager::findPathNode(pathInfo pinfo){
         case pathType::PartitionRoot :
             if (pinfo.directories.size()==0)
             {
-                return this->Root->getRoot();
+                return this->Root->getRoot();// if just partition back root
             }
-            find=this->goToDir(pinfo.directories, this->Root->getRoot());
+            find=this->goToDir(pinfo.directories, this->Root->getRoot());// get node path
             return find;
             break;
         case pathType::PartitionRootWithFile :
-            find=this->goToDir(pinfo.directories, this->Root->getRoot());
+            find=this->goToDir(pinfo.directories, this->Root->getRoot());// get node path directores
+            return find;
             break;
         case pathType::RelativePathWithFile :
-            find=this->goToDir(pinfo.directories, this->CurrentNode);
+            find=this->goToDir(pinfo.directories, this->CurrentNode);//get node path directores
+            return find;
             break;
         case pathType::File :
-            return this->findCurrentFile(pinfo.fileName,this->CurrentNode);
+            return this->findCurrentFile(pinfo.fileName,this->CurrentNode);//get node file in path
             break;
         default:
             throw invalid_argument("incorrect path type in find path node!\n");
@@ -1237,7 +1321,6 @@ node_dir* file_manager::goToDir(vector<string> dirs, node* startNode){
             d=this->findCurrentDir(dirs,dir->getLeft());
             return d;
         }
-        cout<<"in the "<<dir->getName()<<" not exist any directory!\n";
         return nullptr;
     }else{
         throw runtime_error("invalid current node in file manager\n");
@@ -1269,8 +1352,11 @@ node_dir* file_manager::findCurrentDir(vector<string> dirs, node_dir* nodeD){
     return nullptr;
 }
 // get node and search in file list child
-node_file* findCurrentFile(string name, node* startNode){
-    if (node_part* part=dynamic_cast<node_part*>(startNode))
+node_file* file_manager::findCurrentFile(string name, node* startNode){
+    if (!startNode)
+    {
+        return nullptr;
+    }else if (node_part* part=dynamic_cast<node_part*>(startNode))
     {
         return part->getRight()->findFile(name);
     }else if (node_dir* dir=dynamic_cast<node_dir*>(startNode))
@@ -1281,6 +1367,22 @@ node_file* findCurrentFile(string name, node* startNode){
     }
     
     
+}
+// get string and return file in children parent if not find return null without print error
+node_dir* file_manager::findCurrentDirInChild(string name, node* parent){
+    if (node_part* part=dynamic_cast<node_part*>(parent))
+    {
+        return part->findDir(name);
+    }else if (node_dir* dir=dynamic_cast<node_dir*>(parent))
+    {   
+        if (dir->getLeft())
+        {
+            return dir->getLeft()->findDir(name);
+        }
+        return nullptr;
+    }else{
+        throw invalid_argument("invalid node for find directory in chidlre`s parent\n");
+    }
 }
 // set current node to root
 void file_manager::setCurrentNodeToRoot(){
@@ -1301,15 +1403,6 @@ void file_manager::printChild(node* startNode, bool showHidden){
     }else
     {
         throw invalid_argument("invalid node in print Child list!!\n");
-    }
-}
-// find path and start search
-void file_manager::FindNameInPath(pathInfo pinfo, string name, bool showHidden){
-    node* find=findPathNode(pinfo);
-    if (find)
-    {
-        this->printFindNameFromNode(find, name, showHidden);
-        cout<<"\n";
     }
 }
 // print find name in all level child 
@@ -1342,25 +1435,31 @@ void file_manager::printFindNameFromNode(node* startNode, string name, bool show
         throw invalid_argument("invalid node for find sub name!\n");
     }
 }
-// get path info and node information and find current path and create node then add to tree
-void file_manager::createAndAddToTree(pathInfo pinfo, string type, string size, string att){
-    node* find;
-    switch (pinfo.type)
+
+void file_manager::createAndAddtoTree(string name, string size, string att, node* parrent){
+    if (isValidNameFile(name))
     {
-    case pathType::Directory :
-        find=findPathNode(pinfo);
-        if(find){
-            cout<<"Error: this directory exist!\n";
+        int s= convertInt(size);
+        if (s <= 0)
+        {
+            cout<<"size must be positive!\n";
             return;
         }else{
-
+            node_part* p=this->Root->getRoot();
+            if(p->canFitSize(size)){
+                
+            }else{
+                cout<<"your partition hasn`t enugh size for add file\n";
+            }
         }
-        break;
-    case pathType::File :
-        break;
-    default:
-        break;
+    }else if (isValidNamedir(name))
+    {
+        /* code */
+    }else{
+        cout<<"name is not valid for directory or file name\n";
     }
+    
+    
 }
 // get node parent and current node and add to tree
 void file_manager::addToTree(node* parent, node* current){
@@ -1731,14 +1830,13 @@ void node_part::print(int ind){
     if(this->Right)
     {    this->Right->print(ind+1);}
 }
-
+// find name in just childern  
 node_dir* node_part::findDir(string name){
     if (!this->Left)
     {   
         return nullptr; 
     }
-    node_dir* find=this->Left->findDir(name);
-    return find;
+    return find=this->Left->findDir(name);
 }
 
 // tree methods
