@@ -465,6 +465,7 @@ int main(){
     {   
         tree* t =new tree();
         readFile(t);
+        t->printTree();
         file_manager* fm = file_manager::getInstance(t);
         command();
     }
@@ -993,10 +994,12 @@ void file_manager::printChildDirsAndFiles(pathInfo pinfo){
     {
         printChild(part->getLeft());
         printChild(part->getRight());
+        cout<<endl;
     }else if (node_dir* dir=dynamic_cast<node_dir*>(current))
     {
         printChild(dir->getLeft());
         printChild(dir->getRight());
+        cout<<endl;
     }else if (!current)
     {
         return;
@@ -1213,14 +1216,15 @@ void node_file::add(node* component){
 }
 // print all files list for show directory
 void node_file::printList(){
-    node_file current=this;
+    node_file* current=this;
     while (current)
     {   
-        if (!(this->Att.hasAttribute(h)))// if file is not hidden print this
+        if (!(current->Att.hasAttribute(h)))// if file is not hidden print this
         {
-            cout<<this->Name<<" ";
+            
+            cout<<current->Name<<" ";
         }
-        current=current.Next;
+        current=current->Next;
     }
 }
 
@@ -1314,9 +1318,9 @@ void node_dir::printList(){
     node_dir* current=this;
     while (current)
     {
-        if (!(this->Att.hasAttribute(h)))
+        if (!(current->Att.hasAttribute(h)))
         {
-            cout<<this->getName()<<" ";
+            cout<<current->Name<<" ";
         }
         current=current->Next;
     }
