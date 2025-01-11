@@ -98,6 +98,8 @@ parseInfo analyzeParse(string parse);
 
 void readFile(tree* t);
 
+bool isValidPath(const std::string &path);
+
 // analyze path function
 pathInfo analyzePath(string Path); 
 
@@ -118,10 +120,10 @@ void deleteCommandHandler(string path);
 void renameCommandHandler(string path, string newName);
 
 //handler Dir command
-void dirCommandHandler(string path);
+void dirCommandHandler(string path, bool showHidden);
 
 //handler find command
-void findCommandHandler(string path, string name);
+void findCommandHandler(string path, string name, bool showHidden);
 
 //handler tree view command
 void treeViewCommandHandler();
@@ -183,7 +185,7 @@ class node
             notifyParent(sizeChange); // به والد هم اطلاع بده
         }
         virtual void print(int ind)=0; 
-
+        // virtual void printFindName(string name)=0;
 };
 
 class node_file : public node
@@ -217,8 +219,10 @@ class node_file : public node
         void setNext(node_file* next);
         void setSize(int size, node_part* root);
         node_file* getNext(){return this->Next;}
-        void print(int ind) override;
-        void printList();
+        node_file* findFile(string name);// all file Name must math 
+        void print(int ind) override;// print with tab level
+        void printList(bool showHidden);// print all files list
+        void printFindName(string name, bool showHidden);
 };
 
 class node_dir: public node
@@ -260,7 +264,8 @@ class node_dir: public node
         void add(node* component) override;
         void print(int ind) override;
         node_dir* findDir(string name);
-        void printList();
+        void printList(bool showHidden);
+        void printFindName(string name, bool showHidden);
 };
 
 class node_part: public node
@@ -308,6 +313,7 @@ class node_part: public node
         bool canFitSize(int size);
         void print(int ind) override;
         node_dir* findDir(string name);
+        // void printFindName(string name)override;
 };
 
 class tree
@@ -330,6 +336,8 @@ class tree
         }
         void printTree();
 };
+
+// class file manager singleton
 
 class file_manager
 {
@@ -363,14 +371,17 @@ class file_manager
             this->CurrentPath=this->CurrentNode->getName();
         }
 
-        void goToPath(pathInfo pinfo);
-        void printChildDirsAndFiles(pathInfo pinfo);
-        
-        node* findPathNode(pathInfo pinfo);
-        void setCurrentNodeToRoot();
-        node_dir* findCurrentDir(vector<string> dirs, node_dir* nodeD);
-        node_dir* goToDir(vector<string> dirs, node* startNode);
-        void printChild(node* startNode);
+        void goToPath(pathInfo pinfo);// get path and set current node to input path
+        void printChildDirsAndFiles(pathInfo pinfo, bool showHidden); // get path and print child files and dirs list
+        void FindNameInPath(pathInfo pinfo, string name, bool showHidden);// get path and print all dir and file math to name
+
+        node* findPathNode(pathInfo pinfo);// get path and process for find path and return find node if find
+        void setCurrentNodeToRoot();// set current node to root
+        node_dir* findCurrentDir(vector<string> dirs, node_dir* nodeD); // find dir in current level and if have sub find in sub list and return find node
+        node_dir* goToDir(vector<string> dirs, node* startNode);// start search from start node and find dirs 
+        void printChild(node* startNode, bool showHidden);// print child node list
+        void printFindNameFromNode(node* startNode, string name, bool showHidden);// find sub name in all childes 
+
 };
 
 // strategy interface
@@ -405,57 +416,42 @@ class dir_command : public command_strategy
 {
     private:
         pathInfo Path;
+        bool ShowHidden;
     public:
-        dir_command(pathInfo path):command_strategy(){
+        dir_command(pathInfo path, bool showHidden):command_strategy(){
             this->Path=path;
+            this->ShowHidden=showHidden;
         }
         ~dir_command(){};
         void setPath(pathInfo path);
+        void setShowHidden(bool showHidden){
+            this->ShowHidden=showHidden;
+        }
         void execute() override;};
 
-/*
-class create_file_command : public command_strategy {
+class find_command :public command_strategy
+{
     private:
-        string fileName;
-        int fileSize;
-        string filePath;
-
+        pathInfo Path; 
+        string Name;
+        bool ShowHidden;
     public:
-        CreateFileCommand(const string& name, int size, const string& path){}
-        void execute() override {
-            cout << "Creating file..." << endl;
-            cout << "Name: " << fileName << endl;
-            cout << "Size: " << fileSize << " KB" << endl;
-            if (!filePath.empty()) {
-                cout << "Path: " << filePath << endl;
-            } else {
-                cout << "Path: (current directory)" << endl;
-            }
-            cout << "File created successfully!" << endl;
+        find_command(pathInfo path, string name, bool showHidden):command_strategy(){
+            this->Path=path;
+            this->Name=name;
+            this->ShowHidden=showHidden;
         }
+        ~find_command(){};
+        void setPath(pathInfo path);
+        void setName(string name){
+            this->Name=name;
+        }
+        void setShowHidden(bool showHidden){
+            this->ShowHidden=showHidden;
+        }
+        void execute() override;
 };
 
-class create_folder_command : public command_strategy {
-    private:
-        string folderName;
-        string folderPath;
-
-    public:
-        CreateFolderCommand(const string& name, const string& path)
-            : folderName(name), folderPath(path) {}
-
-        void execute() override {
-            cout << "Creating folder..." << endl;
-            cout << "Name: " << folderName << endl;
-            if (!folderPath.empty()) {
-                cout << "Path: " << folderPath << endl;
-            } else {
-                cout << "Path: (current directory)" << endl;
-            }
-            cout << "Folder created successfully!" << endl;
-        }
-};
-*/
 
 file_manager* file_manager::instance = nullptr;
 
@@ -465,7 +461,7 @@ int main(){
     {   
         tree* t =new tree();
         readFile(t);
-        t->printTree();
+        // t->printTree();
         file_manager* fm = file_manager::getInstance(t);
         command();
     }
@@ -474,6 +470,25 @@ int main(){
         std::cerr << e.what() << '\n';
     }
     return 0;
+}
+ // check exist path 
+bool isValidPath(const std::string &path) {
+    // بررسی وجود مسیر
+    if (std::filesystem::exists(path)) {
+        return true;
+    }
+    if (path.empty() || path==".")
+    {
+        return true;
+    }
+    
+    // بررسی مسیرهای پارتیشن ویندوزی مانند C:/ یا D:/ 
+    regex partitionRegex("^[a-zA-Z0-9_-]+:$");
+    if (regex_match(path,partitionRegex)) {
+        return true;
+    }
+
+    return false;
 }
 
 // read file and create tree functions
@@ -801,22 +816,41 @@ void command(){
 
     });
 
-    string pathDir;
+    string pathDir=".";
+    bool showhiddenDir=false;
     auto dirCommand=app.add_subcommand("Dir","show all file and directory in path");
-    dirCommand->add_option("path",pathDir,"path to show dir and files (optional)");
+    dirCommand->add_option("path",pathDir,"path to show dir and files (optional)")->default_val(".");
+    dirCommand->add_flag("-a,--all",showhiddenDir,"show all dirs and files, including hidden");
 
     dirCommand->callback([&](){
-        dirCommandHandler(pathDir);
-        pathDir.erase();
+        dirCommandHandler(pathDir,showhiddenDir);
+        pathDir=".";
+        showhiddenDir=false;
     });
 
     string pathFind,nameFind;
+    bool showHiddenFind=false;
     auto findCommand=app.add_subcommand("Find","find somthing in path");
-    findCommand->add_option("path",pathFind,"paht to serach here (optional)");
-    findCommand->add_option("name",nameFind,"name to serach in path")->required();
+    findCommand->add_option("name",nameFind,"name to serach in path");
+
+    findCommand->add_option("path",pathFind,"paht to serach here (optional)")->default_val(".");
+    
+    findCommand->add_flag("-a,--all",showHiddenFind,"search in all dirs and files, including hidden");
 
     findCommand->callback([&](){
-
+        if (!isValidPath(pathFind)) {
+            // اگر مسیر معتبر نیست، `path` و `name` جابجا می‌شوند
+            std::swap(pathFind, nameFind);
+        }
+        // اگر همچنان نام خالی است، خطای ورودی بدهید
+        if (nameFind.empty()) {
+            std::cerr << "ERROR: Name of the file is required!" << std::endl;
+            return;
+        }
+        findCommandHandler(pathFind,nameFind,showHiddenFind);
+        pathFind.clear();
+        nameFind.clear();
+        showHiddenFind=false;
     });
 
     auto treeViewCommand=app.add_subcommand("TreeView","show all file and directory in partition");
@@ -928,13 +962,14 @@ void renameCommandHandler(string path, string newName){
 
 }
 
-void dirCommandHandler(string path){
+void dirCommandHandler(string path, bool showHidden){
     pathInfo pi={pathType::Current,"",{},""};
-    dir_command cd(pi);
-    if (path.empty())
+    dir_command cd(pi,showHidden);
+    if (path.empty() || path == ".")
     {
         pi={pathType::Current,"",{},""};
         cd.setPath(pi);
+        cd.setShowHidden(showHidden);
         cd.execute();
     }else
     {
@@ -951,13 +986,46 @@ void dirCommandHandler(string path){
             break;
         default:
             cd.setPath(pi);
+            cd.setShowHidden(showHidden);
             cd.execute();
             break;
         }
     }
 }
 
-void findCommandHandler(string path, string name){}
+void findCommandHandler(string path, string name, bool showHidden){
+
+    pathInfo pi={pathType::Current,"",{},""};
+    find_command cd(pi,name,showHidden);
+    if (path.empty() || path==".")
+    {
+        pi={pathType::Current,"",{},""};
+        cd.setPath(pi);
+        cd.setName(name);
+        cd.setShowHidden(showHidden);
+        cd.execute();
+    }else
+    {
+        pi=analyzePath(path);
+        switch (pi.type)
+        {
+        case pathType::Invalid :
+            return;
+            break;
+        case pathType::File :
+        case pathType::PartitionRootWithFile :
+        case pathType::RelativePathWithFile :
+            cout<<"invalid path for find name type current directores!\n";
+            break;
+        default:
+            cd.setPath(pi);
+            cd.setName(name);
+            cd.setShowHidden(showHidden);
+            cd.execute();
+            break;
+        }
+    }
+}
 
 void treeViewCommandHandler(){}
 
@@ -984,7 +1052,7 @@ void file_manager::goToPath(pathInfo pinfo){
     }
 }
 // print just child dirs list and files list 
-void file_manager::printChildDirsAndFiles(pathInfo pinfo){
+void file_manager::printChildDirsAndFiles(pathInfo pinfo, bool showHidden){
     node* current=nullptr;
     if (pinfo.type== pathType::Current)
     {
@@ -992,13 +1060,13 @@ void file_manager::printChildDirsAndFiles(pathInfo pinfo){
     }else {current=findPathNode(pinfo);} 
     if (node_part* part=dynamic_cast<node_part*>(current))
     {
-        printChild(part->getLeft());
-        printChild(part->getRight());
+        printChild(part->getLeft(), showHidden);
+        printChild(part->getRight(), showHidden);
         cout<<endl;
     }else if (node_dir* dir=dynamic_cast<node_dir*>(current))
     {
-        printChild(dir->getLeft());
-        printChild(dir->getRight());
+        printChild(dir->getLeft(), showHidden);
+        printChild(dir->getRight(), showHidden);
         cout<<endl;
     }else if (!current)
     {
@@ -1020,6 +1088,9 @@ node* file_manager::findPathNode(pathInfo pinfo){
         case pathType::RelativePath:
             find=this->goToDir(pinfo.directories, this->CurrentNode);
             return find;
+            break;
+        case pathType::Current :
+            return this->CurrentNode;
             break;
         case pathType::PartitionRoot :
             if (pinfo.directories.size()==0)
@@ -1100,14 +1171,14 @@ void file_manager::setCurrentNodeToRoot(){
     this->CurrentNode=this->Root->getRoot();
     this->setPath();
 }
-
-void file_manager::printChild(node* startNode){
+// get node and print left and right child list
+void file_manager::printChild(node* startNode, bool showHidden){
     if (node_dir* dir=dynamic_cast<node_dir*>(startNode))
     {
-        dir->printList();
+        dir->printList(showHidden);
     }else if (node_file* file=dynamic_cast<node_file*>(startNode))
     {
-        file->printList();
+        file->printList(showHidden);
     }else if (!startNode)
     {
         return;
@@ -1116,7 +1187,45 @@ void file_manager::printChild(node* startNode){
         throw invalid_argument("invalid node in print Child list!!\n");
     }
 }
+// find path and start search
+void file_manager::FindNameInPath(pathInfo pinfo, string name, bool showHidden){
+    node* find=findPathNode(pinfo);
+    if (find)
+    {
+        this->printFindNameFromNode(find, name, showHidden);
+        cout<<"\n";
+    }
+}
 
+void file_manager::printFindNameFromNode(node* startNode, string name, bool showHidden){
+    node_dir* currentD;
+    node_file* currentF;
+    if (node_part* part=dynamic_cast<node_part*>(startNode))
+    {
+        currentD=part->getLeft();
+        currentF=part->getRight();
+        if (currentD)
+        {
+            currentD->printFindName(name,showHidden);
+        }if (currentF)
+        {
+            currentF->printFindName(name,showHidden);
+        }
+    }else if (node_dir* dir=dynamic_cast<node_dir*>(startNode))
+    {
+        currentD=dir->getLeft();
+        currentF=dir->getRight();
+        if (currentD)
+        {
+            currentD->printFindName(name,showHidden);
+        }if (currentF)
+        {
+            currentF->printFindName(name,showHidden);
+        }
+    }else{
+        throw invalid_argument("invalid node for find sub name!\n");
+    }
+}
 
 // execute cd command
 
@@ -1151,7 +1260,31 @@ void dir_command::setPath(pathInfo path){
     this->Path=path;
 }
 void dir_command::execute(){
-    this->FileManager->printChildDirsAndFiles(this->Path);
+    try
+    {
+        this->FileManager->printChildDirsAndFiles(this->Path, this->ShowHidden);
+    }
+    catch(const std::exception& e)
+    {
+        std::cerr << e.what() << '\n';
+    }
+    
+}
+
+// methods find command
+
+void find_command::setPath(pathInfo path){
+    this->Path=path;
+}
+void find_command::execute(){
+    try
+    {
+        this->FileManager->FindNameInPath(this->Path,this->Name,this->ShowHidden);
+    }
+    catch(const std::exception& e)
+    {
+        std::cerr << e.what() << '\n';
+    }
 }
 
 //methods class attributesManager
@@ -1215,17 +1348,45 @@ void node_file::add(node* component){
     }
 }
 // print all files list for show directory
-void node_file::printList(){
+void node_file::printList(bool showHidden){
     node_file* current=this;
     while (current)
     {   
-        if (!(current->Att.hasAttribute(h)))// if file is not hidden print this
+        if (!(current->Att.hasAttribute(h)) || showHidden)// if file is not hidden print this
         {
-            
             cout<<current->Name<<" ";
         }
         current=current->Next;
     }
+}
+// search in sibling list dirs and if find name print file Name
+void node_file::printFindName(string name, bool showHidden){
+    node_file* current=this;
+    int res;
+    while (current)
+    {   
+        if (!current->Att.hasAttribute(h) || showHidden)
+        {
+            res=current->Name.find(name);
+            if(res != string::npos)
+                cout<< current->Name<<" ";
+        }
+        current=current->Next;
+    }
+}
+
+node_file* node_file::findFile(string name){
+    node_file* current=this;
+    while (current)
+    {   
+
+        if (current->Name == name)
+        {
+            return current;
+        }
+        current=current->Next;
+    }
+    return nullptr;
 }
 
 //methods class node_dir
@@ -1314,17 +1475,42 @@ node_dir* node_dir::findDir(string name){
     return nullptr;
 }
 // print all list directores just name
-void node_dir::printList(){
+void node_dir::printList(bool showHidden){
     node_dir* current=this;
     while (current)
     {
-        if (!(current->Att.hasAttribute(h)))
+        if (!(current->Att.hasAttribute(h)) || showHidden )
         {
             cout<<current->Name<<" ";
         }
         current=current->Next;
     }
 }
+
+// search in chiles dirs and sibling list dirs for sub name and child list files
+void node_dir::printFindName(string name, bool showHidden){
+    node_dir* current=this;
+    int res;
+    while (current)
+    {   
+        node_dir* child=current->getLeft();
+        if (child && (!child->Att.hasAttribute(h) || showHidden ))
+        {
+            child->printFindName(name,showHidden);
+        }
+        if (!current->Att.hasAttribute(h) || showHidden)
+        {
+            res=current->Name.find(name);
+            if (res != string::npos)
+            {
+                cout<<current->Name<<" ";
+            }
+        }
+        current->getRight()->printFindName(name,showHidden);
+        current=current->Next;
+    }
+}
+
 
 //methods class node partition
 
