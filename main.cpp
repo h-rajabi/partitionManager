@@ -111,7 +111,7 @@ void command();
 void cdCommandHandler(string path);
 
 //handler create command
-void createCommandHandler(string path, string type, int size, string att);
+void createCommandHandler(string path, string type, string size, string att);
 
 //handler delete command
 void deleteCommandHandler(string path);
@@ -374,14 +374,17 @@ class file_manager
         void goToPath(pathInfo pinfo);// get path and set current node to input path
         void printChildDirsAndFiles(pathInfo pinfo, bool showHidden); // get path and print child files and dirs list
         void FindNameInPath(pathInfo pinfo, string name, bool showHidden);// get path and print all dir and file math to name
+        void createAndAddToTree(pathInfo pinfo, string type, string size, string att);// get path and file or directory information and create node 
+
 
         node* findPathNode(pathInfo pinfo);// get path and process for find path and return find node if find
         void setCurrentNodeToRoot();// set current node to root
+        node_dir* goToDir(vector<string> dirs, node* startNode);// start search from start node child and find dirs  
         node_dir* findCurrentDir(vector<string> dirs, node_dir* nodeD); // find dir in current level and if have sub find in sub list and return find node
-        node_dir* goToDir(vector<string> dirs, node* startNode);// start search from start node and find dirs 
+        node_file* findCurrentFile(string name, node* startNode);// find file in child start
         void printChild(node* startNode, bool showHidden);// print child node list
         void printFindNameFromNode(node* startNode, string name, bool showHidden);// find sub name in all childes 
-
+        void addToTree(node* parent, node* current);
 };
 
 // strategy interface
@@ -452,6 +455,41 @@ class find_command :public command_strategy
         void execute() override;
 };
 
+class create_command :public command_strategy
+{
+    private:
+        pathInfo Path; 
+        string Type;
+        string Size;
+        string Att;
+    public:
+        create_command(pathInfo path, string type, string size, string att):command_strategy(){
+            this->Path=path;
+            this->Type=type;
+            this->Size=size;
+            this->Att=att;
+        }
+        ~create_command(){};
+        void setPath(pathInfo path){
+            this->Path=path;
+        };
+        void setType(string type){
+            this->Type=type;
+        }
+        void setSize(string size){
+            this->Size=size;
+        }
+        void setAtt(string att){
+            this->Att=att;
+        }
+        void setAll(pathInfo path, string type, string size, string att){
+            this->Path=path;
+            this->Type=type;
+            this->Size=size;
+            this->Att=att;
+        }
+        void execute() override;
+};
 
 file_manager* file_manager::instance = nullptr;
 
@@ -464,6 +502,16 @@ int main(){
         // t->printTree();
         file_manager* fm = file_manager::getInstance(t);
         command();
+        // string s;
+        // pathInfo pi;
+        // while (true)
+        // {
+        //     cout<<"enter:";
+        //     getline(cin,s);
+        //     pi=analyzePath(s);
+        //     cout<<pi.type<<endl;
+        // }
+        
     }
     catch(const std::exception& e)
     {
@@ -786,8 +834,7 @@ void command(){
         cdPath.erase();
     });
 
-    string pathCreate,typeCreate,attCreate;
-    int sizeCreate;
+    string pathCreate, typeCreate, attCreate, sizeCreate;
     auto createCommand=app.add_subcommand("Create","create file or directory");
     createCommand->add_option("type",typeCreate,"type of item (File/Dir)")->required();
     createCommand->add_option("path",pathCreate,"path to create file or folder if just type name create in current path")->required();
@@ -795,7 +842,17 @@ void command(){
     createCommand->add_option("attribute",attCreate,"attribute for acsses level (rwh)");
 
     createCommand->callback([&](){
-
+        if (typeCreate == "File" || typeCreate == "Dir" )
+        {
+            createCommandHandler(pathCreate,typeCreate,sizeCreate,attCreate);
+        }else{
+            cout<<"invalid type! type must be File or Dir.\n";
+            return;
+        }
+        pathCreate.clear();
+        typeCreate.clear();
+        attCreate.clear();
+        sizeCreate.clear();
     });
 
 
@@ -950,7 +1007,49 @@ void cdCommandHandler(string path){
     }
 }
 
-void createCommandHandler(string path, string type, int size, string att){
+void createCommandHandler(string path, string type, string size, string att){
+    if (type == "File")
+    {
+        if (size.empty())
+        {
+            cout<<"file must have size!\n";
+            return;
+        }
+        regex onlyDigit("^[0-9]*$");
+        if (!regex_match(size,onlyDigit))
+        {
+            cout<<"size must be only digit`s\n";
+            return;
+        }
+    }else if (type == "Dir" && size.size() >0 )
+    {
+        cout<<"Directory can`t have size\n";
+        return;
+    }
+    if (!att.empty())
+    {
+        regex accsess("^[rwh]*$");
+        if (!regex_match(att,accsess))
+        {
+            cout<<"atiribute must be (rwh) format\n";
+            return;
+        }
+    }
+
+    pathInfo pi={pathType::Current,"",{},""};
+    pi=analyzePath(path);
+    create_command cd(pi,type,size,att);
+    switch (pi.type)
+    {
+    case pathType::Invalid :
+        return;
+        break;
+    
+    default:
+        cd.setAll(pi,type,size,att);
+        cd.execute();
+        break;
+    }
 
 }
 
@@ -1085,7 +1184,7 @@ node* file_manager::findPathNode(pathInfo pinfo){
     switch (pinfo.type)
     {
         case pathType::Directory :
-        case pathType::RelativePath:
+        case pathType::RelativePath :
             find=this->goToDir(pinfo.directories, this->CurrentNode);
             return find;
             break;
@@ -1101,10 +1200,13 @@ node* file_manager::findPathNode(pathInfo pinfo){
             return find;
             break;
         case pathType::PartitionRootWithFile :
-            return nullptr;
+            find=this->goToDir(pinfo.directories, this->Root->getRoot());
             break;
         case pathType::RelativePathWithFile :
-            return nullptr;
+            find=this->goToDir(pinfo.directories, this->CurrentNode);
+            break;
+        case pathType::File :
+            return this->findCurrentFile(pinfo.fileName,this->CurrentNode);
             break;
         default:
             throw invalid_argument("incorrect path type in find path node!\n");
@@ -1166,6 +1268,20 @@ node_dir* file_manager::findCurrentDir(vector<string> dirs, node_dir* nodeD){
     cout<<"can`t find directory:"<<name<<endl;
     return nullptr;
 }
+// get node and search in file list child
+node_file* findCurrentFile(string name, node* startNode){
+    if (node_part* part=dynamic_cast<node_part*>(startNode))
+    {
+        return part->getRight()->findFile(name);
+    }else if (node_dir* dir=dynamic_cast<node_dir*>(startNode))
+    {
+        return dir->getRight()->findFile(name);
+    }else{
+        throw invalid_argument("invalid node in find file node!\n");
+    }
+    
+    
+}
 // set current node to root
 void file_manager::setCurrentNodeToRoot(){
     this->CurrentNode=this->Root->getRoot();
@@ -1196,7 +1312,7 @@ void file_manager::FindNameInPath(pathInfo pinfo, string name, bool showHidden){
         cout<<"\n";
     }
 }
-
+// print find name in all level child 
 void file_manager::printFindNameFromNode(node* startNode, string name, bool showHidden){
     node_dir* currentD;
     node_file* currentF;
@@ -1225,6 +1341,30 @@ void file_manager::printFindNameFromNode(node* startNode, string name, bool show
     }else{
         throw invalid_argument("invalid node for find sub name!\n");
     }
+}
+// get path info and node information and find current path and create node then add to tree
+void file_manager::createAndAddToTree(pathInfo pinfo, string type, string size, string att){
+    node* find;
+    switch (pinfo.type)
+    {
+    case pathType::Directory :
+        find=findPathNode(pinfo);
+        if(find){
+            cout<<"Error: this directory exist!\n";
+            return;
+        }else{
+
+        }
+        break;
+    case pathType::File :
+        break;
+    default:
+        break;
+    }
+}
+// get node parent and current node and add to tree
+void file_manager::addToTree(node* parent, node* current){
+
 }
 
 // execute cd command
@@ -1280,11 +1420,26 @@ void find_command::execute(){
     try
     {
         this->FileManager->FindNameInPath(this->Path,this->Name,this->ShowHidden);
+        cout<<"\n";
     }
     catch(const std::exception& e)
     {
         std::cerr << e.what() << '\n';
     }
+}
+
+// methods create command
+
+void create_command::execute(){
+    try
+    {
+        this->FileManager->createAndAddToTree(this->Path, this->Type, this->Size, this->Att);
+    }
+    catch(const std::exception& e)
+    {
+        std::cerr << e.what() << '\n';
+    }
+    
 }
 
 //methods class attributesManager
@@ -1374,7 +1529,7 @@ void node_file::printFindName(string name, bool showHidden){
         current=current->Next;
     }
 }
-
+// search in files list math all name
 node_file* node_file::findFile(string name){
     node_file* current=this;
     while (current)
