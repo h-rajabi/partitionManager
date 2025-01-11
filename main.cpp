@@ -218,7 +218,7 @@ class node_file : public node
         void setSize(int size, node_part* root);
         node_file* getNext(){return this->Next;}
         void print(int ind) override;
-
+        void printList();
 };
 
 class node_dir: public node
@@ -260,6 +260,7 @@ class node_dir: public node
         void add(node* component) override;
         void print(int ind) override;
         node_dir* findDir(string name);
+        void printList();
 };
 
 class node_part: public node
@@ -350,21 +351,26 @@ class file_manager
             return instance;
         }
         ~file_manager(){};
+        file_manager(const file_manager&) = delete;
+        file_manager& operator=(const file_manager&) = delete;
         void setCurrentNode(node* cnode);
         node* getCurrentNode(){return this->CurrentNode;}
         tree* getRoot(){return this->Root;}
         string getCurrentPath(){
             return this->CurrentPath;
         }
-        // void updateCurrentPath();
-        file_manager(const file_manager&) = delete;
-        file_manager& operator=(const file_manager&) = delete;
-        node_dir* findCurrentDir(vector<string> dirs, node_dir* nodeD);
-        void goToDir(vector<string> dirs);
         void setPath(){
             this->CurrentPath=this->CurrentNode->getName();
         }
+
+        void goToPath(pathInfo pinfo);
+        void printChildDirsAndFiles(pathInfo pinfo);
+        
+        node* findPathNode(pathInfo pinfo);
         void setCurrentNodeToRoot();
+        node_dir* findCurrentDir(vector<string> dirs, node_dir* nodeD);
+        node_dir* goToDir(vector<string> dirs, node* startNode);
+        void printChild(node* startNode);
 };
 
 // strategy interface
@@ -394,6 +400,18 @@ class cd_command : public command_strategy
         void setPath(pathInfo path);
         void execute() override;
 };
+
+class dir_command : public command_strategy
+{
+    private:
+        pathInfo Path;
+    public:
+        dir_command(pathInfo path):command_strategy(){
+            this->Path=path;
+        }
+        ~dir_command(){};
+        void setPath(pathInfo path);
+        void execute() override;};
 
 /*
 class create_file_command : public command_strategy {
@@ -439,26 +457,6 @@ class create_folder_command : public command_strategy {
 };
 */
 
-// camand manager
-/*
-class command_manager {
-    private:
-        command_strategy* strategy; // اشاره‌گر به استراتژی فعلی
-
-    public:
-        void setStrategy(command_strategy* newStrategy) {
-            strategy = newStrategy;
-        }
-        void executeCommand() {
-            if (strategy) {
-                strategy->execute();
-            } else {
-                cout << "No command strategy set!" << endl;
-            }
-        }
-};
-*/
-
 file_manager* file_manager::instance = nullptr;
 
 int main(){ 
@@ -467,7 +465,6 @@ int main(){
     {   
         tree* t =new tree();
         readFile(t);
-        // t->printTree();
         file_manager* fm = file_manager::getInstance(t);
         command();
     }
@@ -678,7 +675,7 @@ pathInfo analyzePath(string Path) {
 
     pathInfo info = {Invalid, "", {}, ""};
     path p(Path);
-    
+
     regex windowspartition("^[a-zA-Z]:/.*");
     if (regex_match(Path,windowspartition))
     {   
@@ -808,7 +805,8 @@ void command(){
     dirCommand->add_option("path",pathDir,"path to show dir and files (optional)");
 
     dirCommand->callback([&](){
-
+        dirCommandHandler(pathDir);
+        pathDir.erase();
     });
 
     string pathFind,nameFind;
@@ -899,7 +897,7 @@ void cdCommandHandler(string path){
         case pathType::File :
         case pathType::PartitionRootWithFile :
         case pathType::RelativePathWithFile :
-            cout<<"path format invalid just forward to directory!\n";
+            cout<<"path format invalid just type directory!\n";
             break;
         case pathType::PartitionRoot :
             if (pi.directories.size()==0)
@@ -929,7 +927,34 @@ void renameCommandHandler(string path, string newName){
 
 }
 
-void dirCommandHandler(string path){}
+void dirCommandHandler(string path){
+    pathInfo pi={pathType::Current,"",{},""};
+    dir_command cd(pi);
+    if (path.empty())
+    {
+        pi={pathType::Current,"",{},""};
+        cd.setPath(pi);
+        cd.execute();
+    }else
+    {
+        pi=analyzePath(path);
+        switch (pi.type)
+        {
+        case pathType::Invalid :
+            return;
+            break;
+        case pathType::File :
+        case pathType::PartitionRootWithFile :
+        case pathType::RelativePathWithFile :
+            cout<<"invalid path for show list type current directores!\n";
+            break;
+        default:
+            cd.setPath(pi);
+            cd.execute();
+            break;
+        }
+    }
+}
 
 void findCommandHandler(string path, string name){}
 
@@ -948,48 +973,109 @@ void file_manager::setCurrentNode(node* cnode){
     this->CurrentNode=cnode;
 }
 
-void file_manager::goToDir(vector<string> dirs){
-    reverse(dirs.begin(),dirs.end());
-    if (node_part* part=dynamic_cast<node_part*>(this->CurrentNode))
+// get path info and set current node to path
+void file_manager::goToPath(pathInfo pinfo){
+    node* current=findPathNode(pinfo);
+    if (current)
     {
+        this->setCurrentNode(current);
+        this->setPath();
+    }
+}
+// print just child dirs list and files list 
+void file_manager::printChildDirsAndFiles(pathInfo pinfo){
+    node* current=nullptr;
+    if (pinfo.type== pathType::Current)
+    {
+        current = this->CurrentNode;    
+    }else {current=findPathNode(pinfo);} 
+    if (node_part* part=dynamic_cast<node_part*>(current))
+    {
+        printChild(part->getLeft());
+        printChild(part->getRight());
+    }else if (node_dir* dir=dynamic_cast<node_dir*>(current))
+    {
+        printChild(dir->getLeft());
+        printChild(dir->getRight());
+    }else if (!current)
+    {
+        return;
+    }else
+    {
+        throw invalid_argument("invalid find node in print child!\n");
+    }
+}
+
+/* get path and process to find node(file or directory) 
+ there is process start from current node or root
+*/ 
+node* file_manager::findPathNode(pathInfo pinfo){
+    node* find=nullptr;
+    switch (pinfo.type)
+    {
+        case pathType::Directory :
+        case pathType::RelativePath:
+            find=this->goToDir(pinfo.directories, this->CurrentNode);
+            return find;
+            break;
+        case pathType::PartitionRoot :
+            if (pinfo.directories.size()==0)
+            {
+                return this->Root->getRoot();
+            }
+            find=this->goToDir(pinfo.directories, this->Root->getRoot());
+            return find;
+            break;
+        case pathType::PartitionRootWithFile :
+            return nullptr;
+            break;
+        case pathType::RelativePathWithFile :
+            return nullptr;
+            break;
+        default:
+            throw invalid_argument("incorrect path type in find path node!\n");
+    }
+}
+// start search for find dir from part or dir
+node_dir* file_manager::goToDir(vector<string> dirs, node* startNode){
+    reverse(dirs.begin(),dirs.end());
+    if (node_part* part=dynamic_cast<node_part*>(startNode))
+    {   
         node_dir* d=part->getLeft();
         if (d)
         {
             d=this->findCurrentDir(dirs,d);
             if (d)
             {
-                this->setCurrentNode(d);
-                this->setPath();
-                cout<<"done.\n";
-            }else{
-                return;
+                return d;
             }
-        }else{
-            cout<<"partition not have directory!\n";
-            return;
+            return nullptr;
         }
-    }else if (node_dir* dir=dynamic_cast<node_dir*>(this->CurrentNode))
-    {
-        dir=this->findCurrentDir(dirs,dir->getLeft());
-        if (dir)
+        cout<<"partition not have directory!\n";
+        return nullptr;
+    }else if (node_dir* dir=dynamic_cast<node_dir*>(startNode))
+    {   
+        node_dir* d=nullptr;
+        if (dir->getLeft())
         {
-            this->setCurrentNode(dir);
-            this->setPath();
-            cout<<"done.\n";
+            d=this->findCurrentDir(dirs,dir->getLeft());
+            return d;
         }
-        return;
+        cout<<"in the "<<dir->getName()<<" not exist any directory!\n";
+        return nullptr;
     }else{
         throw runtime_error("invalid current node in file manager\n");
     }    
+    return nullptr;
 }
-
+// find dir in current level and if have sub find in sub list 
 node_dir* file_manager::findCurrentDir(vector<string> dirs, node_dir* nodeD){
     node_dir* current=nodeD;
     string name=dirs.back();
     dirs.pop_back();
     while (current)
     {
-        current = current->findDir(name);
+        current = current->findDir(name);// check dirs list 
         if (!current)
         {
             cout<<"can`t find directory:"<<name<<endl;
@@ -1006,10 +1092,28 @@ node_dir* file_manager::findCurrentDir(vector<string> dirs, node_dir* nodeD){
     cout<<"can`t find directory:"<<name<<endl;
     return nullptr;
 }
-
+// set current node to root
 void file_manager::setCurrentNodeToRoot(){
     this->CurrentNode=this->Root->getRoot();
+    this->setPath();
 }
+
+void file_manager::printChild(node* startNode){
+    if (node_dir* dir=dynamic_cast<node_dir*>(startNode))
+    {
+        dir->printList();
+    }else if (node_file* file=dynamic_cast<node_file*>(startNode))
+    {
+        file->printList();
+    }else if (!startNode)
+    {
+        return;
+    }else
+    {
+        throw invalid_argument("invalid node in print Child list!!\n");
+    }
+}
+
 
 // execute cd command
 
@@ -1022,18 +1126,30 @@ void cd_command::execute(){
     {
     case pathType::Current :
         this->FileManager->setCurrentNodeToRoot();
-        this->FileManager->setPath();
         break;
     case pathType::PartitionRoot :
-        this->FileManager->setCurrentNodeToRoot();
-        this->FileManager->goToDir(Path.directories);
+        if (this->Path.directories.size()==0)
+        {
+            this->FileManager->setCurrentNodeToRoot();
+        }else
+        {
+            this->FileManager->goToPath(this->Path);    
+        }
         break;
     default:
-        this->FileManager->goToDir(Path.directories);
+        this->FileManager->goToPath(this->Path);
         break;
     }
 }
 
+// methods dir command
+
+void dir_command::setPath(pathInfo path){
+    this->Path=path;
+}
+void dir_command::execute(){
+    this->FileManager->printChildDirsAndFiles(this->Path);
+}
 
 //methods class attributesManager
 
@@ -1095,7 +1211,18 @@ void node_file::add(node* component){
         throw runtime_error("can`t add another format to file");
     }
 }
-
+// print all files list for show directory
+void node_file::printList(){
+    node_file current=this;
+    while (current)
+    {   
+        if (!(this->Att.hasAttribute(h)))// if file is not hidden print this
+        {
+            cout<<this->Name<<" ";
+        }
+        current=current.Next;
+    }
+}
 
 //methods class node_dir
 
@@ -1181,6 +1308,18 @@ node_dir* node_dir::findDir(string name){
         current=current->Next;
     }
     return nullptr;
+}
+// print all list directores just name
+void node_dir::printList(){
+    node_dir* current=this;
+    while (current)
+    {
+        if (!(this->Att.hasAttribute(h)))
+        {
+            cout<<this->getName()<<" ";
+        }
+        current=current->Next;
+    }
 }
 
 //methods class node partition
