@@ -156,7 +156,6 @@ class node
             this->Name=name;
         }
         ~node() {
-            delete Parent;
             delete Date;
         }
         string getName(){return this->Name;}
@@ -223,6 +222,8 @@ class node_file : public node
         void print(int ind) override;// print with tab level
         void printList(bool showHidden);// print all files list
         void printFindName(string name, bool showHidden);
+        void deleteList();
+        node_file* deleteFile(string name);
 };
 
 class node_dir: public node
@@ -240,6 +241,13 @@ class node_dir: public node
         node_dir(string name, attributesManager att, tm* date) : node(name){
             this->Att=att;
             this->Date=date;
+            this->Next=NULL;
+            this->Left=NULL;
+            this->Right=NULL;
+        }
+        node_dir(string name, int att):node(name){
+            this->Name=name;
+            this->Att=attributesManager(att);
             this->Next=NULL;
             this->Left=NULL;
             this->Right=NULL;
@@ -266,6 +274,8 @@ class node_dir: public node
         node_dir* findDir(string name);
         void printList(bool showHidden);
         void printFindName(string name, bool showHidden);
+        void deleteList();
+        node_dir* deleteDir(string name);
 };
 
 class node_part: public node
@@ -375,7 +385,7 @@ class file_manager
         void printChildDirsAndFiles(pathInfo pinfo, bool showHidden); // get path and print child files and dirs list
         void FindNameInPath(pathInfo pinfo, string name, bool showHidden);// get path and print all dir and file math to name
         void FindAndCreateAndAddToTree(pathInfo pinfo, string type, string size, string att);// get path and file or directory information and create node 
-
+        void deletePath(pathInfo pinfo);
 
         node* findPathNode(pathInfo pinfo);// get path and process for find path and return find node if find
         void setCurrentNodeToRoot();// set current node to root
@@ -432,7 +442,8 @@ class dir_command : public command_strategy
         void setShowHidden(bool showHidden){
             this->ShowHidden=showHidden;
         }
-        void execute() override;};
+        void execute() override;
+};
 
 class find_command :public command_strategy
 {
@@ -493,6 +504,38 @@ class create_command :public command_strategy
         void execute() override;
 };
 
+class delete_command : public command_strategy
+{
+    private:
+        pathInfo Path;
+    public:
+        delete_command(pathInfo path):command_strategy(){
+            this->Path=path;
+        }
+        ~delete_command(){};
+        void setPath(pathInfo path){
+            this->Path=path;
+        }
+        void execute() override;
+};
+
+class rename_command : public command_strategy
+{
+    private:
+        pathInfo Path;
+        string NewName;
+    public:
+        rename_command(pathInfo path):command_strategy(){
+            this->Path=path;
+        }
+        ~rename_command(){};
+        void setAll(pathInfo path,string newname){
+            this->Path=path;
+            this->NewName=newname;
+        }
+        void execute() override;
+};
+
 file_manager* file_manager::instance = nullptr;
 
 int main(){ 
@@ -505,13 +548,20 @@ int main(){
         file_manager* fm = file_manager::getInstance(t);
         command();
         // string s;
-        // pathInfo pi;
+        // regex onlyDigit(R"((\d{1,3}(,\d{3})*|\d+))");
+        // // pathInfo pi;
         // while (true)
         // {
         //     cout<<"enter:";
         //     getline(cin,s);
-        //     pi=analyzePath(s);
-        //     cout<<pi.type<<endl;
+        // //     pi=analyzePath(s);
+        // //     cout<<pi.type<<endl;
+        //     if (regex_match(s,onlyDigit))
+        //     {
+        //         cout<<"math"<<endl;
+        //         /* code */
+        //     }else cout<<"not math\n";
+            
         // }
         
     }
@@ -863,7 +913,8 @@ void command(){
     deleteCommand->add_option("path",pathDelete,"path for delete file or directoty. if just type name delete in current path")->required();
 
     deleteCommand->callback([&](){
-
+        deleteCommandHandler(pathDelete);
+        pathDelete.clear();
     });
 
     string pathRename,nameRename;
@@ -1017,10 +1068,10 @@ void createCommandHandler(string path, string type, string size, string att){
             cout<<"file must have size!\n";
             return;
         }
-        regex onlyDigit("^[0-9]*$");
+        regex onlyDigit(R"((\d{1,3}(,\d{3})*|\d+))");
         if (!regex_match(size,onlyDigit))
         {
-            cout<<"size must be only digit`s\n";
+            cout<<"invalid format for size! size must be only digit`s\n";
             return;
         }
     }else if (type == "Dir" && size.size() >0 )
@@ -1056,7 +1107,33 @@ void createCommandHandler(string path, string type, string size, string att){
 }
 
 void deleteCommandHandler(string path){
-
+    pathInfo pi={pathType::Current,"",{},""};
+    pi=analyzePath(path);
+    delete_command cd(pi);
+    switch (pi.type)
+    {
+    case pathType::Invalid :
+        return;
+        break;
+    case pathType::Current :
+        cout<<"path is requred!\n";
+        return;
+        break;
+    case pathType::PartitionRoot :
+        if (pi.directories.size()==0)
+        {
+            cout<<"you can`t delete a partition!\n";
+            return;
+        }else{
+            cd.setPath(pi);
+            cd.execute();    
+        }
+        break;
+    default:
+        cd.setPath(pi);
+        cd.execute();
+        break;
+    }
 }
 
 void renameCommandHandler(string path, string newName){
@@ -1257,6 +1334,92 @@ void file_manager::FindAndCreateAndAddToTree(pathInfo pinfo, string type, string
         break;
     }
 }
+// get path and delete file or directory
+void file_manager::deletePath(pathInfo pinfo){
+    string name;
+    node* find;
+    switch (pinfo.type)
+    {
+    case pathType::Directory :
+        if (node_part* part=dynamic_cast<node_part*>(this->CurrentNode))
+        {
+            node_dir* f=part->getLeft()->deleteDir(pinfo.directories[0]);
+            if (!f)
+            {
+                return;
+            }else{
+                part->setLeft(f);
+            }
+            
+        }else if (node_dir* dir=dynamic_cast<node_dir*>(this->CurrentNode))
+        {
+            node_dir* f=dir->getLeft()->deleteDir(pinfo.directories[0]);
+            if (!f)
+            {
+                return;
+            }else{
+                dir->setLeft(f);
+            }
+        }else throw invalid_argument("invalid argumant!\n");
+        break;
+    case pathType::File :
+        if (node_part* part=dynamic_cast<node_part*>(this->CurrentNode))
+        {
+            node_file* f=part->getRight()->deleteFile(pinfo.fileName);
+            if (!f)
+            {
+                return;
+            }else{
+                part->setRight(f);
+            }
+            
+        }else if (node_dir* dir=dynamic_cast<node_dir*>(this->CurrentNode))
+        {
+            node_file* f=dir->getRight()->deleteFile(pinfo.fileName);
+            if (!f)
+            {
+                return;
+            }else{
+                dir->setRight(f);
+            }
+            
+        }else throw invalid_argument("invalid argumant!\n");
+        break;
+    case pathType::PartitionRoot :
+    case pathType::RelativePath :
+        name=pinfo.directories.back();
+        pinfo.directories.pop_back();// delete last directory for find parent
+        find=findPathNode(pinfo);
+        if (node_dir* dir=dynamic_cast<node_dir*>(find))
+        {   
+            node_dir* f=dir->getLeft()->deleteDir(name);
+            if (!f)
+            {
+                return;
+            }else{
+                dir->setLeft(f);
+            }
+        }
+        break;
+    case pathType::PartitionRootWithFile :
+    case pathType::RelativePathWithFile :
+        name=pinfo.fileName;
+        find=findPathNode(pinfo);// find parrent node path
+        if (node_dir* dir=dynamic_cast<node_dir*>(find))
+        {   
+            node_file* f=dir->getRight()->deleteFile(name);
+            if (!f)
+            {
+                return ;
+            }else{
+                dir->setRight(f);
+            }
+            return;
+        }
+        return;
+        break;
+    }
+}
 
 /* get path and process to find node(file or directory) 
  there is process start from current node or root
@@ -1446,24 +1609,78 @@ void file_manager::createAndAddtoTree(string name, string size, string att, node
             return;
         }else{
             node_part* p=this->Root->getRoot();
-            if(p->canFitSize(size)){
-                
+            if(p->canFitSize(s)){
+                if (att.empty())
+                {
+                    node_file* n=new node_file(name,s);
+                    addToTree(parrent,n);
+                }else{
+                    int at=0;
+                    for (char i:att)
+                    {
+                        if (i=='r')
+                        {
+                            at +=1;
+                        }else if (i=='w')
+                        {
+                            at +=2;
+                        }else if (i=='h')
+                        {
+                            at +=4;
+                        }
+                    }
+                    node_file* n = new node_file(name,s,at);
+                    at=0;
+                    addToTree(parrent,n);
+                }
             }else{
                 cout<<"your partition hasn`t enugh size for add file\n";
             }
         }
     }else if (isValidNamedir(name))
     {
-        /* code */
+        if (att.empty())
+        {
+            node_dir* d=new node_dir(name);
+            addToTree(parrent,d);
+        }else{
+            int at=0;
+            for (char i:att)
+            {
+                if (i=='r')
+                {
+                    at +=1;
+                }else if (i=='w')
+                {
+                    at +=2;
+                }else if (i=='h')
+                {
+                    at +=4;
+                }
+            }
+            node_dir* d=new node_dir(name,at);
+            at=0;
+            addToTree(parrent,d);
+        }
     }else{
-        cout<<"name is not valid for directory or file name\n";
+        cout<<"name is not valid for directory or file name!!\n";
     }
-    
-    
 }
 // get node parent and current node and add to tree
 void file_manager::addToTree(node* parent, node* current){
-
+    if (node_part* part=dynamic_cast<node_part*>(parent))
+    {
+        part->add(current);
+        cout<<"done!\n";
+    }else if (node_dir* dir=dynamic_cast<node_dir*>(parent))
+    {
+        dir->add(current);
+        cout<<"done!\n";
+    }else
+    {
+        cout<<"error: invalid node to add to tree\n";
+        return;  
+    }
 }
 
 // execute cd command
@@ -1532,13 +1749,30 @@ void find_command::execute(){
 void create_command::execute(){
     try
     {
-        this->FileManager->createAndAddToTree(this->Path, this->Type, this->Size, this->Att);
+        this->FileManager->FindAndCreateAndAddToTree(this->Path, this->Type, this->Size, this->Att);
     }
     catch(const std::exception& e)
     {
         std::cerr << e.what() << '\n';
     }
     
+}
+
+
+void delete_command::execute(){
+    try
+    {
+        this->FileManager->deletePath();
+    }
+    catch(const std::exception& e)
+    {
+        std::cerr << e.what() << '\n';
+    }
+    
+}
+
+void rename_command::execute(){
+
 }
 
 //methods class attributesManager
@@ -1643,6 +1877,48 @@ node_file* node_file::findFile(string name){
     return nullptr;
 }
 
+void node_file::deleteList(){
+    node_file* current,temp;
+    current=this;
+    temp=this;
+    while (current)
+    {
+        current=current->Next;
+        temp->updateSize(-(temp->Size));
+        delete temp;
+        temp=current;   
+    }
+}
+
+node_file* node_file::deleteFile(string name){
+    node_file* current=this;
+    if (current->Name==name)
+    {
+        node_file* temp =current;
+        temp->updateSize(-(temp->Size));
+        delete temp;
+        current=current->Next;
+        cout<<"file "<<name<<" deleted sucsessfuly.\n";
+        return current;
+    }
+    
+    while (current->Next)
+    {
+        if (current->Next->Name==name)
+        {
+            node_file* temp=current->Next;
+            current->setNext(temp->Next);
+            temp->updateSize(-(temp->Size));
+            delete temp;
+            cout<<"file "<<name<<" deleted sucsessfuly.\n";
+            return nullptr;
+        }
+        current=current->Next;
+    }
+    cout<<"file "<<name<<"not find!\n";
+    return nullptr;
+}
+
 //methods class node_dir
 
 void node_dir::setNext(node_dir* next){
@@ -1740,7 +2016,6 @@ void node_dir::printList(bool showHidden){
         current=current->Next;
     }
 }
-
 // search in chiles dirs and sibling list dirs for sub name and child list files
 void node_dir::printFindName(string name, bool showHidden){
     node_dir* current=this;
@@ -1764,7 +2039,67 @@ void node_dir::printFindName(string name, bool showHidden){
         current=current->Next;
     }
 }
+// delete all dir list 
+void node_dir::deleteList(){
+    node_dir* current=this;
+    while (current)
+    {
+        node_dir* temp=current;
+        if (temp->Left)
+        {
+            temp->Left->deleteList();
+        }
+        if (temp->Right)
+        {
+            temp->Right->deleteList();
+        }
+        current=current->Next;
+        delete temp;
+    }
+}
 
+node_dir* node_dir::deleteDir(string name){
+    node_dir* current,temp;
+    current=this;
+    temp=this;
+    if (current->Name=name)
+    {
+        current=current->Next;
+        if (temp.Left)
+        {
+            temp.Left->deleteList();
+        }
+        if (temp.Right)
+        {
+            temp.Right->deleteList();
+        }
+        delete temp;
+        cout<<"directory "<<name<<" deleted sucsessfuly.\n";
+        return current;        
+    }
+    while (current->Next)
+    {
+        if (current->Next->Name==name)
+        {
+            temp=current->Next;
+            current->setNext(temp.Next);
+            if (temp.Left)
+            {
+                temp.Left->deleteList();
+            }
+            if (temp.Right)
+            {
+                temp.Right->deleteList();
+            }
+            delete temp;
+            cout<<"directory "<<name<<" deleted sucsessfuly.\n";
+            return nullptr;
+        }
+        current=current->Next;
+    }
+    cout<<"Directory "<<name<<" not find!\n";
+    return nullptr;
+}
 
 //methods class node partition
 
@@ -1836,7 +2171,7 @@ node_dir* node_part::findDir(string name){
     {   
         return nullptr; 
     }
-    return find=this->Left->findDir(name);
+    return this->Left->findDir(name);
 }
 
 // tree methods
