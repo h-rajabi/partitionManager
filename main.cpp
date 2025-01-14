@@ -187,7 +187,6 @@ class node
             notifyParent(sizeChange); // به والد هم اطلاع بده
         }
         virtual void print(int ind)=0; 
-        virtual void change(string size,string att)=0;
         // virtual void printFindName(string name)=0;
 };
 
@@ -229,7 +228,7 @@ class node_file : public node
         void deleteList();
         node_file* deleteFile(string name);
         void reNameFile(string name, string newName);
-        void change(string size,string att) override;
+        void change(string size, string att, node_part* root);
 };
 
 class node_dir: public node
@@ -283,7 +282,7 @@ class node_dir: public node
         void deleteList();
         node_dir* deleteDir(string name);
         void reNameDir(string name, string newName);
-        void change(string size,string att) override;
+        void change(string att);
 };
 
 class node_part: public node
@@ -331,9 +330,6 @@ class node_part: public node
         bool canFitSize(int size);
         void print(int ind) override;
         node_dir* findDir(string name);
-        void change(string size,string att) override {
-            cout<<"you can`t change partition\n";
-        }
         // void printFindName(string name)override;
 };
 
@@ -1604,7 +1600,7 @@ void file_manager::findAndRenamePath(pathInfo pinfo, string newName){
             cout<<"Error: directoy "<<newName<<" alredy exist!\n";
             return;
         }
-        this->reNameNodeInChilds(pinfo, this->CurrentNode, newName);    
+        this->reNameNodeInChilds(pinfo, this->CurrentNode, newName,pinfo.directories[-1]);    
         break;
     case pathType::File :
         find=this->findCurrentFile(newName,this->CurrentNode);
@@ -1613,7 +1609,7 @@ void file_manager::findAndRenamePath(pathInfo pinfo, string newName){
             cout<<"Error: file "<<newName<<" alredy exist!\n";
             return;
         }
-        this->reNameNodeInChilds(pinfo, this->CurrentNode, newName);
+        this->reNameNodeInChilds(pinfo, this->CurrentNode, newName,pinfo.fileName);
     case pathType::PartitionRoot :
     case pathType::RelativePath :
         name=pinfo.directories.back();
@@ -1621,7 +1617,7 @@ void file_manager::findAndRenamePath(pathInfo pinfo, string newName){
         find=this->findPathNode(pinfo);
         if (find)
         {
-            this->reNameNodeInChilds(pinfo,find,name);
+            this->reNameNodeInChilds(pinfo,find,newName,name);
         }
         break;
     case pathType::PartitionRootWithFile :
@@ -1664,8 +1660,9 @@ void file_manager::findAndChangeNode(pathInfo pinfo, string size, string att){
         name =pinfo.directories[-1];
         find=this->findPathNode(pinfo);
         if (find)
-        {
-            find->change(size,att);
+        {   
+            node_dir* dir=dynamic_cast<node_dir*>(find);
+            dir->change(att);
         }else {
             cout<<"cant find directory "<<name<<"!\n";
             return;
@@ -1675,7 +1672,8 @@ void file_manager::findAndChangeNode(pathInfo pinfo, string size, string att){
         find=this->findPathNode(pinfo);
         if (find)
         {
-            find->change(size,att);   
+            node_file* file=dynamic_cast<node_file*>(find);
+            file->change(size,att,this->Root->getRoot());   
         }
     case pathType::PartitionRootWithFile :
     case pathType::RelativePathWithFile :
@@ -1685,7 +1683,8 @@ void file_manager::findAndChangeNode(pathInfo pinfo, string size, string att){
             find = findCurrentFile(pinfo.fileName,find);
             if (find)
             {
-                find->change(size,att);
+                node_file* file=dynamic_cast<node_file*>(find);
+                file->change(size,att,this->Root->getRoot());
             }
             else cout<<"not find file "<<pinfo.fileName<<endl;
         }
@@ -1802,9 +1801,7 @@ node_file* file_manager::findCurrentFile(string name, node* startNode){
         return dir->getRight()->findFile(name);
     }else{
         throw invalid_argument("invalid node in find file node!\n");
-    }
-    
-    
+    }    
 }
 // get string and return file in children parent if not find return null without print error
 node_dir* file_manager::findCurrentDirInChild(string name, node* parent){
@@ -2005,11 +2002,11 @@ void file_manager::reNameNodeInChilds(pathInfo pinfo, node* parent, string newNa
         {
             if (dir->getRight())
             {
-                dir->getRight()->reNameDir(name, newName);
+                dir->getRight()->reNameFile(name, newName);
             }else{
                 cout<<"file "<<name<<" not find!\n";
             }
-        }else if (node_part* part=dynamic_cast<node_dir*>(parent))
+        }else if (node_part* part=dynamic_cast<node_part*>(parent))
         {
             if (dir->getRight())
             {
@@ -2103,7 +2100,7 @@ void create_command::execute(){
 void delete_command::execute(){
     try
     {
-        this->FileManager->deletePath();
+        this->FileManager->deletePath(this->Path);
     }
     catch(const std::exception& e)
     {
@@ -2249,13 +2246,12 @@ node_file* node_file::findFile(string name){
 }
 // delete all list file and change avabale size partition
 void node_file::deleteList(){
-    node_file* current,temp;
-    current=this;
-    temp=this;
+    node_file* current=this;
+    node_file* temp=this;
     while (current)
     {
         current=current->Next;
-        temp.notifyParent(-(temp.Size));
+        temp->notifyParent(-(temp->Size));
         delete temp;
         temp=current;   
     }
@@ -2305,9 +2301,9 @@ void node_file::reNameFile(string name, string newName){
     cout<<"file "<<name<<" not find!\n";
 }
 
-void node_file::change(string size,string att){
-    int size = convertInt(size);
-    this->setSize(size);
+void node_file::change(string size, string att, node_part* root){
+    int s = convertInt(size);
+    this->setSize(s, root);
     Att.clearAttribute(r);
     Att.clearAttribute(w);
     Att.clearAttribute(h);
@@ -2367,13 +2363,13 @@ void node_dir::add(node* component){
         }
         else {
             (this->getLastDir(this->getLeft()))->setNext(dir);
-            dir->Parent=this;
+            dir->setParent(this);
         }
     }else if (node_file* file=dynamic_cast<node_file*>(component))
     {
         if (!(this->getRight())) {
             this->setRight(file);
-            file->Parent=this;
+            file->setParent(this);
         }
         // else (this->getLastFile(this->getRight()))->setNext(file);
         else this->Right->add(file);
@@ -2475,19 +2471,18 @@ void node_dir::deleteList(){
 }
 
 node_dir* node_dir::deleteDir(string name){
-    node_dir* current,temp;
-    current=this;
-    temp=this;
-    if (current->Name=name)
+    node_dir* current=this;
+    node_dir* temp=this;
+    if (current->Name==name)
     {
         current=current->Next;
-        if (temp.Left)
+        if (temp->getLeft())
         {
-            temp.Left->deleteList();
+            temp->getLeft()->deleteList();
         }
-        if (temp.Right)
+        if (temp->getRight())
         {
-            temp.Right->deleteList();
+            temp->getRight()->deleteList();
         }
         delete temp;
         cout<<"directory "<<name<<" deleted sucsessfuly.\n";
@@ -2498,14 +2493,14 @@ node_dir* node_dir::deleteDir(string name){
         if (current->Next->Name==name)
         {
             temp=current->Next;
-            current->setNext(temp.Next);
-            if (temp.Left)
+            current->setNext(temp->Next);
+            if (temp->getLeft())
             {
-                temp.Left->deleteList();
+                temp->getLeft()->deleteList();
             }
-            if (temp.Right)
+            if (temp->getRight())
             {
-                temp.Right->deleteList();
+                temp->getRight()->deleteList();
             }
             delete temp;
             cout<<"directory "<<name<<" deleted sucsessfuly.\n";
@@ -2532,7 +2527,7 @@ void node_dir::reNameDir(string name, string newName){
     cout<<"directory "<<name<<" not find!\n";
 }
 
-void node_dir::change(string size,string att){
+void node_dir::change(string att){
     Att.clearAttribute(r);
     Att.clearAttribute(w);
     Att.clearAttribute(h);
@@ -2593,17 +2588,17 @@ void node_part::add(node* component){
     {
         if(!(this->getLeft())) {
             this->setLeft(dir);
-            dir->Parent=this;
+            dir->setParent(this);
         }
         else {
             (this->getLastDir(this->getLeft()))->setNext(dir);
-            dir->Parent=this;
+            dir->setParent(this);
         }
     }else if (node_file* file=dynamic_cast<node_file*>(component))
     {
         if (!(this->getRight())) {
             this->setRight(file);
-            file->Parent=this;
+            file->setParent(this);
         }
         // else (this->getLastFile(this->getRight()))->setNext(file);   
         else this->Right->add(file);
