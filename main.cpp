@@ -169,6 +169,9 @@ class node
         node* getParent(){
             return this->Parent;
         }
+        void setName(string name){
+            this->Name=name;
+        }
         void getDatestr(){
             cout<< put_time(Date,"%Y-%m-%d"); 
         }
@@ -224,6 +227,7 @@ class node_file : public node
         void printFindName(string name, bool showHidden);
         void deleteList();
         node_file* deleteFile(string name);
+        void reNameFile(string name, string newName);
 };
 
 class node_dir: public node
@@ -276,6 +280,7 @@ class node_dir: public node
         void printFindName(string name, bool showHidden);
         void deleteList();
         node_dir* deleteDir(string name);
+        void reNameDir(string name, string newName);
 };
 
 class node_part: public node
@@ -385,7 +390,8 @@ class file_manager
         void printChildDirsAndFiles(pathInfo pinfo, bool showHidden); // get path and print child files and dirs list
         void FindNameInPath(pathInfo pinfo, string name, bool showHidden);// get path and print all dir and file math to name
         void FindAndCreateAndAddToTree(pathInfo pinfo, string type, string size, string att);// get path and file or directory information and create node 
-        void deletePath(pathInfo pinfo);
+        void deletePath(pathInfo pinfo);// get path and delete node in tree if exist
+        void findAndRenamePath(pathInfo pinfo, string newName);//get path and rename node if exist if new name exist return error
 
         node* findPathNode(pathInfo pinfo);// get path and process for find path and return find node if find
         void setCurrentNodeToRoot();// set current node to root
@@ -397,6 +403,7 @@ class file_manager
         void printFindNameFromNode(node* startNode, string name, bool showHidden);// find sub name in all childes 
         void createAndAddtoTree(string name, string size, string att, node* parrent);
         void addToTree(node* parent, node* current);
+        void reNameNodeInChilds(pathInfo pinfo, node* parent, string newName, string name);
 };
 
 // strategy interface
@@ -528,6 +535,7 @@ class rename_command : public command_strategy
         rename_command(pathInfo path):command_strategy(){
             this->Path=path;
         }
+        rename_command():command_strategy(){}
         ~rename_command(){};
         void setAll(pathInfo path,string newname){
             this->Path=path;
@@ -535,6 +543,7 @@ class rename_command : public command_strategy
         }
         void execute() override;
 };
+
 
 file_manager* file_manager::instance = nullptr;
 
@@ -919,11 +928,13 @@ void command(){
 
     string pathRename,nameRename;
     auto renameCommand=app.add_subcommand("Rename","rename file or directory");
-    renameCommand->add_option("path",pathRename,"path directory or file");
+    renameCommand->add_option("path",pathRename,"path directory or file")->required();
     renameCommand->add_option("name",nameRename,"name file or directory fo rename")->required();
 
     renameCommand->callback([&](){
-
+        renameCommandHandler(pathRename,nameRename);
+        pathRename.clear();
+        nameRename.clear();
     });
 
     string pathDir=".";
@@ -1137,7 +1148,50 @@ void deleteCommandHandler(string path){
 }
 
 void renameCommandHandler(string path, string newName){
-
+    pathInfo pi;
+    pi = analyzePath(path);
+    rename_command cd;
+    switch (pi.type)
+    {
+    case pathType::Current :
+        cout<<"path can`t be null!\n";
+        return;
+        break;
+    case pathType::Invalid :
+        break;
+    case pathType::Directory :
+    case pathType::PartitionRoot :
+    case pathType::RelativePath :
+        if (newName == pi.directories[-1] )
+        {
+            cout<<"your new name must be different!\n";
+            return;
+        }
+        if (isValidNamedir(newName))
+        {
+            cd.setAll(pi,newName);
+            cd.execute();
+        }else{
+            cout<<"not math name, your name must be math with your path type!\n";
+            return;
+        }
+        break;
+    default:
+        if (newName==pi.fileName)
+        {
+            cout<<"your new name must be different!\n";
+            return;
+        }
+        if (isValidNameFile(newName))
+        {
+            cd.setAll(pi,newName);
+            cd.execute();
+        }else{
+            cout<<"not math name, your name must be math with your path type!\n";
+            return;
+        }
+        break;
+    }
 }
 
 void dirCommandHandler(string path, bool showHidden){
@@ -1421,6 +1475,49 @@ void file_manager::deletePath(pathInfo pinfo){
     }
 }
 
+void file_manager::findAndRenamePath(pathInfo pinfo, string newName){
+    string name;
+    node* find;
+    switch (pinfo.type)
+    {
+    case pathType::Directory :
+        find=this->findCurrentDirInChild(newName, this->CurrentNode);
+        if (find)
+        {
+            cout<<"Error: directoy "<<newName<<" alredy exist!\n";
+            return;
+        }
+        this->reNameNodeInChilds(pinfo, this->CurrentNode, newName);    
+        break;
+    case pathType::File :
+        find=this->findCurrentFile(newName,this->CurrentNode);
+        if (find)
+        {
+            cout<<"Error: file "<<newName<<" alredy exist!\n";
+            return;
+        }
+        this->reNameNodeInChilds(pinfo, this->CurrentNode, newName);
+    case pathType::PartitionRoot :
+    case pathType::RelativePath :
+        name=pinfo.directories.back();
+        pinfo.directories.pop_back();
+        find=this->findPathNode(pinfo);
+        if (find)
+        {
+            this->reNameNodeInChilds(pinfo,find,name);
+        }
+        break;
+    case pathType::PartitionRootWithFile :
+    case pathType::RelativePathWithFile :
+        find=this->findPathNode(pinfo);
+        if (find)
+        {
+            this->reNameNodeInChilds(pinfo, find, newName, pinfo.fileName);
+        }
+        break;
+    }
+}
+
 /* get path and process to find node(file or directory) 
  there is process start from current node or root
 */ 
@@ -1445,11 +1542,11 @@ node* file_manager::findPathNode(pathInfo pinfo){
             return find;
             break;
         case pathType::PartitionRootWithFile :
-            find=this->goToDir(pinfo.directories, this->Root->getRoot());// get node path directores
+            find=this->goToDir(pinfo.directories, this->Root->getRoot());// get node path directores parent file
             return find;
             break;
         case pathType::RelativePathWithFile :
-            find=this->goToDir(pinfo.directories, this->CurrentNode);//get node path directores
+            find=this->goToDir(pinfo.directories, this->CurrentNode);//get node path directores parent file
             return find;
             break;
         case pathType::File :
@@ -1682,6 +1779,57 @@ void file_manager::addToTree(node* parent, node* current){
         return;  
     }
 }
+// rename node from parrent and get pinfo for process dir or file
+void file_manager::reNameNodeInChilds(pathInfo pinfo, node* parent, string newName,string name){
+    switch (pinfo.type)
+    {
+    case pathType::Directory :
+    case pathType::RelativePath :
+    case pathType::PartitionRoot :
+        if (node_part* part=dynamic_cast<node_part*>(parent))
+        {
+            if (part->getLeft())
+            {
+                part->getLeft()->reNameDir(name, newName);
+            }else{
+                cout<<"directory "<<name<<" not find!\n";
+            }
+        }else if (node_dir* dir=dynamic_cast<node_dir*>(parent))
+        {
+            if (dir->getLeft())
+            {
+                dir->getLeft()->reNameDir(name, newName);
+            }else{
+                cout<<"directory "<<name<<" not find!\n";
+            }
+        }else{
+            cout<<"error: invalid argumant in renameNodeInChild\n";
+        }
+        break;
+    case pathType::RelativePathWithFile :
+    case pathType::File :
+    case pathType::PartitionRootWithFile :
+        if (node_dir* dir=dynamic_cast<node_dir*>(parent))
+        {
+            if (dir->getRight())
+            {
+                dir->getRight()->reNameDir(name, newName);
+            }else{
+                cout<<"file "<<name<<" not find!\n";
+            }
+        }else if (node_part* part=dynamic_cast<node_dir*>(parent))
+        {
+            if (dir->getRight())
+            {
+                dir->getRight()->reNameFile(name, newName);
+            }else{
+                cout<<"file "<<name<<" not find!\n";
+            }
+        }else{
+            cout<<"error: invalid argumant in renameNodeInChild\n";
+        }
+    }
+}
 
 // execute cd command
 
@@ -1876,7 +2024,7 @@ node_file* node_file::findFile(string name){
     }
     return nullptr;
 }
-
+// delete all list file and change avabale size partition
 void node_file::deleteList(){
     node_file* current,temp;
     current=this;
@@ -1889,7 +2037,7 @@ void node_file::deleteList(){
         temp=current;   
     }
 }
-
+// delete file math with name and change avabale partition
 node_file* node_file::deleteFile(string name){
     node_file* current=this;
     if (current->Name==name)
@@ -1917,6 +2065,21 @@ node_file* node_file::deleteFile(string name){
     }
     cout<<"file "<<name<<"not find!\n";
     return nullptr;
+}
+
+void node_file::reNameFile(string name, string newName){
+    node_file* current=this;
+    while (current)
+    {
+        if (current->Name==name)
+        {
+            current->setName(newName);
+            cout<<"done.\n";
+            return;
+        }
+        current=current->Next;
+    }
+    cout<<"file "<<name<<" not find!\n";
 }
 
 //methods class node_dir
@@ -2099,6 +2262,21 @@ node_dir* node_dir::deleteDir(string name){
     }
     cout<<"Directory "<<name<<" not find!\n";
     return nullptr;
+}
+
+void node_dir::reNameDir(string name, string newName){
+    node_dir* current=this;
+    while (current)
+    {
+        if (current->Name==name)
+        {
+            current->setName(newName);
+            cout<<"done.\n";
+            return;
+        }
+        current=current->Next;
+    }
+    cout<<"directory "<<name<<" not find!\n";
 }
 
 //methods class node partition
