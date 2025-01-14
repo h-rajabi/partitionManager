@@ -1657,28 +1657,26 @@ node* file_manager::findPathNode(pathInfo pinfo){
     {
         case pathType::Directory :
         case pathType::RelativePath :
-            find=this->goToDir(pinfo.directories, this->CurrentNode);
+            find=this->goToDir(pinfo.directories, this->CurrentNode);//return directory if find
             return find;
             break;
         case pathType::Current :
-            return this->CurrentNode;
+            return this->CurrentNode;// return current node
             break;
         case pathType::PartitionRoot :
             if (pinfo.directories.size()==0)
             {
                 return this->Root->getRoot();// if just partition back root
             }
-            find=this->goToDir(pinfo.directories, this->Root->getRoot());// get node path
+            find=this->goToDir(pinfo.directories, this->Root->getRoot());// get directory in path iffind
             return find;
             break;
         case pathType::PartitionRootWithFile :
             find=this->goToDir(pinfo.directories, this->Root->getRoot());// get node path directores parent file
-            find = this->findCurrentFile(pinfo.fileName,find);//return node file if find
             return find;
             break;
         case pathType::RelativePathWithFile :
             find=this->goToDir(pinfo.directories, this->CurrentNode);//get node path directores parent file
-            find = this->findCurrentFile(pinfo.fileName,find);//return node file if find
             return find;
             break;
         case pathType::File :
@@ -1899,12 +1897,26 @@ void file_manager::createAndAddtoTree(string name, string size, string att, node
 void file_manager::addToTree(node* parent, node* current){
     if (node_part* part=dynamic_cast<node_part*>(parent))
     {
-        part->add(current);
-        cout<<"done!\n";
+        try
+        {
+            part->add(current);
+            cout<<"done!\n";    
+        }
+        catch(const std::exception& e)
+        {
+            std::cerr << e.what() << '\n';
+        }
     }else if (node_dir* dir=dynamic_cast<node_dir*>(parent))
     {
-        dir->add(current);
-        cout<<"done!\n";
+        try
+        {
+            dir->add(current);
+            cout<<"done!\n";    
+        }
+        catch(const std::exception& e)
+        {
+            std::cerr << e.what() << '\n';
+        }
     }else
     {
         cout<<"error: invalid node to add to tree\n";
