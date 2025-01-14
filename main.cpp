@@ -126,10 +126,10 @@ void dirCommandHandler(string path, bool showHidden);
 void findCommandHandler(string path, string name, bool showHidden);
 
 //handler tree view command
-void treeViewCommandHandler();
+void treeViewCommandHandler(string path);
 
 //handler change Command
-void changeCommandHandler(string path, int size, string att);
+void changeCommandHandler(string path, string size, string att);
 
 //handler copy Command
 void copyCommandHandler(string path, string next);
@@ -392,6 +392,8 @@ class file_manager
         void FindAndCreateAndAddToTree(pathInfo pinfo, string type, string size, string att);// get path and file or directory information and create node 
         void deletePath(pathInfo pinfo);// get path and delete node in tree if exist
         void findAndRenamePath(pathInfo pinfo, string newName);//get path and rename node if exist if new name exist return error
+        void findAndPrintTreeView(pathInfo pinfo);//find and print all sub tree view
+        void findAndChangeNode(pathInfo pinfo, string size, string att);// find node and change
 
         node* findPathNode(pathInfo pinfo);// get path and process for find path and return find node if find
         void setCurrentNodeToRoot();// set current node to root
@@ -544,6 +546,41 @@ class rename_command : public command_strategy
         void execute() override;
 };
 
+class treeView_command : public command_strategy
+{
+    private:
+        pathInfo Path;
+    public:
+        treeView_command(pathInfo path):command_strategy(){
+            this->Path=path;
+        }
+        treeView_command():command_strategy(){}
+        ~treeView_command(){};
+        void setAll(pathInfo path){
+            this->Path=path;
+        }
+        void execute() override;
+};
+
+class change_command : public command_strategy
+{
+    private:
+        pathInfo Path;
+        string Size;
+        string Att;
+    public:
+        change_command(pathInfo path):command_strategy(){
+            this->Path=path;
+        }
+        change_command():command_strategy(){}
+        ~change_command(){};
+        void setAll(pathInfo path, string size, string att){
+            this->Path=path;
+            this->Att=att;
+            this->Size=size;
+        }
+        void execute() override;
+};
 
 file_manager* file_manager::instance = nullptr;
 
@@ -974,22 +1011,33 @@ void command(){
         showHiddenFind=false;
     });
 
+    string pathTree;
     auto treeViewCommand=app.add_subcommand("TreeView","show all file and directory in partition");
+    treeViewCommand->add_option("path",pathTree,"path for print tree view (optional)");
 
     treeViewCommand->callback([&](){
-
+        treeViewCommandHandler(pathTree);
     });
 
 
     string pathChange,attChange;
-    int sizeChange;
+    string sizeChange;
     auto changeCommand=app.add_subcommand("Change","change attribute and size");
     changeCommand->add_option("path",pathChange,"path file or directory to change size or atributes")->required();
     changeCommand->add_option("size",sizeChange,"size just for file");
     changeCommand->add_option("atribute",attChange,"acsses levle atribute (rwh)");
 
     changeCommand->callback([&](){
-
+        if (sizeChange.empty() && attChange.empty() )
+        {
+            cout<<"you must chang somthing!\n";
+        }else
+        {
+            changeCommandHandler(pathChange, sizeChange, attChange);
+        }
+        pathChange.clear();
+        attChange.clear();
+        sizeChange.clear();
     });
 
     string currentPathCopy,nextPathCopy;
@@ -1259,9 +1307,67 @@ void findCommandHandler(string path, string name, bool showHidden){
     }
 }
 
-void treeViewCommandHandler(){}
+void treeViewCommandHandler(string path){
+    pathInfo pi;
+    treeView_command cd;
+    pi=analyzePath(path);
+    switch (pi.type)
+    {
+    case pathType::Invalid :
+        return;
+        break;
+    case pathType::File :
+    case pathType::PartitionRootWithFile :
+    case pathType::RelativePathWithFile :
+        cout<<"invalid format for print tree view! you must give directory name only\n";
+        return;
+        break;
+    default:
+        cd.setAll(pi);
+        cd.execute();
+        break;
+    }
+}
 
-void changeCommandHandler(string path, int size, string att){}
+void changeCommandHandler(string path, string size, string att){
+    regex onlyDigit(R"((\d{1,3}(,\d{3})*|\d+))");
+    regex accsess("^[rwh]*$");
+    if (!regex_match(size,onlyDigit))
+    {
+        cout<<"size format invalid!\n";
+    }else if (!regex_match(att,accsess))
+    {
+        cout<<"attribute format invalid! (rwh)\n";
+    }else
+    {
+        pathInfo pi;
+        pi = analyzePath(path);
+        change_command cd;
+        switch (pi.type)
+        {
+        case pathType::Current :
+            cout<<"you must type atlist a file or directory!\n";
+            break;
+        case pathType::Invalid :
+            break;
+        case pathType::Directory :
+        case pathType::PartitionRoot :
+        case pathType::RelativePath :
+            if (!size.empty())
+            {
+                cout<<"size just can change for file not directory!\n";
+                return;
+            }
+            cd.setAll(pi,size,att);
+            cd.execute();
+            break;
+        default:
+            cd.setAll(pi,size,att);
+            cd.execute();
+            break;
+        }
+    }
+}
 
 void copyCommandHandler(string path, string next){}
 
@@ -1474,7 +1580,7 @@ void file_manager::deletePath(pathInfo pinfo){
         break;
     }
 }
-
+// get path and find path and if new name not exist rename node
 void file_manager::findAndRenamePath(pathInfo pinfo, string newName){
     string name;
     node* find;
@@ -1516,6 +1622,29 @@ void file_manager::findAndRenamePath(pathInfo pinfo, string newName){
         }
         break;
     }
+}
+// find path and print child tree view
+void file_manager::findAndPrintTreeView(pathInfo pinfo){
+    switch (pinfo.type)
+    {
+    case pathType::Current :
+        this->CurrentNode->print(0);
+        break;
+    case pathType::Directory :
+    case pathType::PartitionRoot :
+    case pathType::RelativePath :
+        node* find=this->findPathNode(pinfo);
+        if (find)
+        {
+            find->print(0);
+        }
+        break;
+    }
+}
+
+void file_manager::findAndChangeNode(pathInfo pinfo, string size, string att){
+    node* find;
+    
 }
 
 /* get path and process to find node(file or directory) 
@@ -1906,6 +2035,7 @@ void create_command::execute(){
     
 }
 
+// methods delete command
 
 void delete_command::execute(){
     try
@@ -1919,7 +2049,36 @@ void delete_command::execute(){
     
 }
 
+// methods rename command
+
 void rename_command::execute(){
+    try
+    {
+        this->FileManager->findAndRenamePath(this->Path,this->NewName);
+    }
+    catch(const std::exception& e)
+    {
+        std::cerr << e.what() << '\n';
+    }
+}
+
+// methods tree view command
+
+void treeView_command::execute(){
+    try
+    {
+        this->FileManager->findAndPrintTreeView(this->Path);
+    }
+    catch(const std::exception& e)
+    {
+        std::cerr << e.what() << '\n';
+    }
+    
+}
+
+// methods change command
+
+void change_command::execute(){
 
 }
 
