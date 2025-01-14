@@ -1649,6 +1649,7 @@ void file_manager::findAndChangeNode(pathInfo pinfo, string size, string att){
 
 /* get path and process to find node(file or directory) 
  there is process start from current node or root
+ return find node or null if not find
 */ 
 node* file_manager::findPathNode(pathInfo pinfo){
     node* find=nullptr;
@@ -1672,10 +1673,12 @@ node* file_manager::findPathNode(pathInfo pinfo){
             break;
         case pathType::PartitionRootWithFile :
             find=this->goToDir(pinfo.directories, this->Root->getRoot());// get node path directores parent file
+            find = this->findCurrentFile(pinfo.fileName,find);//return node file if find
             return find;
             break;
         case pathType::RelativePathWithFile :
             find=this->goToDir(pinfo.directories, this->CurrentNode);//get node path directores parent file
+            find = this->findCurrentFile(pinfo.fileName,find);//return node file if find
             return find;
             break;
         case pathType::File :
@@ -2135,6 +2138,7 @@ void node_file::add(node* component){
         if (!this->Next)
         {
             this->Next=file;
+            file->Parent=this->Parent;
         }else this->Next->add(file);
         
     }else
@@ -2276,11 +2280,20 @@ node_file* node_dir::getLastFile(node_file* first){
 void node_dir::add(node* component){
     if (node_dir* dir=dynamic_cast<node_dir*>(component))
     {
-        if(!(this->getLeft())) this->setLeft(dir);
-        else (this->getLastDir(this->getLeft()))->setNext(dir);
+        if(!(this->getLeft())) {
+            this->setLeft(dir);
+            dir->Parent=this;
+        }
+        else {
+            (this->getLastDir(this->getLeft()))->setNext(dir);
+            dir->Parent=this;
+        }
     }else if (node_file* file=dynamic_cast<node_file*>(component))
     {
-        if (!(this->getRight())) this->setRight(file);
+        if (!(this->getRight())) {
+            this->setRight(file);
+            file->Parent=this;
+        }
         // else (this->getLastFile(this->getRight()))->setNext(file);
         else this->Right->add(file);
         this->updateSize(file->getSize());
@@ -2478,11 +2491,20 @@ node_file* node_part::getLastFile(node_file* first){
 void node_part::add(node* component){
     if (node_dir* dir=dynamic_cast<node_dir*>(component))
     {
-        if(!(this->getLeft())) this->setLeft(dir);
-        else (this->getLastDir(this->getLeft()))->setNext(dir);
+        if(!(this->getLeft())) {
+            this->setLeft(dir);
+            dir->Parent=this;
+        }
+        else {
+            (this->getLastDir(this->getLeft()))->setNext(dir);
+            dir->Parent=this;
+        }
     }else if (node_file* file=dynamic_cast<node_file*>(component))
     {
-        if (!(this->getRight())) this->setRight(file);
+        if (!(this->getRight())) {
+            this->setRight(file);
+            file->Parent=this;
+        }
         // else (this->getLastFile(this->getRight()))->setNext(file);   
         else this->Right->add(file);
         this->updateSize(file->getSize());
