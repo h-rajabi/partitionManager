@@ -187,6 +187,7 @@ class node
             notifyParent(sizeChange); // به والد هم اطلاع بده
         }
         virtual void print(int ind)=0; 
+        virtual void change(string size,string att)=0;
         // virtual void printFindName(string name)=0;
 };
 
@@ -228,6 +229,7 @@ class node_file : public node
         void deleteList();
         node_file* deleteFile(string name);
         void reNameFile(string name, string newName);
+        void change(string size,string att) override;
 };
 
 class node_dir: public node
@@ -281,6 +283,7 @@ class node_dir: public node
         void deleteList();
         node_dir* deleteDir(string name);
         void reNameDir(string name, string newName);
+        void change(string size,string att) override;
 };
 
 class node_part: public node
@@ -328,6 +331,9 @@ class node_part: public node
         bool canFitSize(int size);
         void print(int ind) override;
         node_dir* findDir(string name);
+        void change(string size,string att) override {
+            cout<<"you can`t change partition\n";
+        }
         // void printFindName(string name)override;
 };
 
@@ -1358,6 +1364,11 @@ void changeCommandHandler(string path, string size, string att){
                 cout<<"size just can change for file not directory!\n";
                 return;
             }
+            if (pi.directories.empty())
+            {
+                cout<<"you can`t change partition attributes!\n";
+                return;
+            }
             cd.setAll(pi,size,att);
             cd.execute();
             break;
@@ -1644,7 +1655,44 @@ void file_manager::findAndPrintTreeView(pathInfo pinfo){
 
 void file_manager::findAndChangeNode(pathInfo pinfo, string size, string att){
     node* find;
-    
+    string name;
+    switch (pinfo.type)
+    {
+    case pathType::Directory :
+    case pathType::PartitionRoot :
+    case pathType::RelativePath :
+        name =pinfo.directories[-1];
+        find=this->findPathNode(pinfo);
+        if (find)
+        {
+            find->change(size,att);
+        }else {
+            cout<<"cant find directory "<<name<<"!\n";
+            return;
+        }
+        break;
+    case pathType::File :
+        find=this->findPathNode(pinfo);
+        if (find)
+        {
+            find->change(size,att);   
+        }
+    case pathType::PartitionRootWithFile :
+    case pathType::RelativePathWithFile :
+        find=this->findPathNode(pinfo);
+        if (find)
+        {
+            find = findCurrentFile(pinfo.fileName,find);
+            if (find)
+            {
+                find->change(size,att);
+            }
+            else cout<<"not find file "<<pinfo.fileName<<endl;
+        }
+        break;
+    default:
+        break;
+    }
 }
 
 /* get path and process to find node(file or directory) 
@@ -2207,7 +2255,7 @@ void node_file::deleteList(){
     while (current)
     {
         current=current->Next;
-        temp->updateSize(-(temp->Size));
+        temp.notifyParent(-(temp.Size));
         delete temp;
         temp=current;   
     }
@@ -2218,7 +2266,7 @@ node_file* node_file::deleteFile(string name){
     if (current->Name==name)
     {
         node_file* temp =current;
-        temp->updateSize(-(temp->Size));
+        temp->notifyParent(-(temp->Size));
         delete temp;
         current=current->Next;
         cout<<"file "<<name<<" deleted sucsessfuly.\n";
@@ -2231,7 +2279,7 @@ node_file* node_file::deleteFile(string name){
         {
             node_file* temp=current->Next;
             current->setNext(temp->Next);
-            temp->updateSize(-(temp->Size));
+            temp->notifyParent(temp->Size);
             delete temp;
             cout<<"file "<<name<<" deleted sucsessfuly.\n";
             return nullptr;
@@ -2255,6 +2303,27 @@ void node_file::reNameFile(string name, string newName){
         current=current->Next;
     }
     cout<<"file "<<name<<" not find!\n";
+}
+
+void node_file::change(string size,string att){
+    int size = convertInt(size);
+    this->setSize(size);
+    Att.clearAttribute(r);
+    Att.clearAttribute(w);
+    Att.clearAttribute(h);
+    for (char a:att)
+    {
+        if (a=='r')
+        {
+            Att.setAttribute(r);
+        }else if (a=='w')
+        {
+            Att.setAttribute(w);
+        }else if (a=='h')
+        {
+            Att.setAttribute(h);
+        }
+    }
 }
 
 //methods class node_dir
@@ -2461,6 +2530,25 @@ void node_dir::reNameDir(string name, string newName){
         current=current->Next;
     }
     cout<<"directory "<<name<<" not find!\n";
+}
+
+void node_dir::change(string size,string att){
+    Att.clearAttribute(r);
+    Att.clearAttribute(w);
+    Att.clearAttribute(h);
+    for (char a:att)
+    {
+        if (a=='r')
+        {
+            Att.setAttribute(r);
+        }else if (a=='w')
+        {
+            Att.setAttribute(w);
+        }else if (a=='h')
+        {
+            Att.setAttribute(h);
+        }
+    }
 }
 
 //methods class node partition
