@@ -226,6 +226,7 @@ class node_file : public node
         node_file* findFile(string name);// all file Name must math 
         void print(int ind) override;// print with tab level
         void printList(bool showHidden);// print all files list
+        node_file* findBeforFile(string name);
         void printFindName(string name, bool showHidden);
         void deleteList();
         node_file* deleteFile(string name);
@@ -233,6 +234,7 @@ class node_file : public node
         void change(string size, string att, node_part* root);
         void copy(node* parent);
         void copyList(node* parent);
+        void move(node* parent);
 };
 
 class node_dir: public node
@@ -281,6 +283,7 @@ class node_dir: public node
         node_file* getRight(){return this->Right;}
         node_dir* getLastDir(node_dir* first);
         node_file* getLastFile(node_file* first);
+        node_dir* findBeforDir(string name);
         void add(node* component) override;
         void print(int ind) override;
         node_dir* findDir(string name);
@@ -292,6 +295,7 @@ class node_dir: public node
         void change(string att);
         void copy(node* parent);
         void copyList(node* parent);
+        void move(node* parent);
 };
 
 class node_part: public node
@@ -406,6 +410,8 @@ class file_manager
         void findAndPrintTreeView(pathInfo pinfo);//find and print all sub tree view
         void findAndChangeNode(pathInfo pinfo, string size, string att);// find node and change
         void findAndCopyNodeToNewPath(pathInfo pinfo, pathInfo npinfo);
+        void findAndMoveNodeToNewPath(pathInfo pinfo, pathInfo npinfo);
+
 
         node* findPathNode(pathInfo pinfo);// get path and process for find path and return find node if find
         void setCurrentNodeToRoot();// set current node to root
@@ -606,6 +612,25 @@ class copy_command : public command_strategy
         }
         copy_command():command_strategy(){}
         ~copy_command(){};
+        void setAll(pathInfo path, pathInfo npath){
+            this->Path=path;
+            this->NPath=npath;
+        }
+        void execute() override;
+};
+
+class move_command : public command_strategy
+{
+    private:
+        pathInfo Path;
+        pathInfo NPath;
+    public:
+        move_command(pathInfo path,pathInfo npath):command_strategy(){
+            this->Path=path;
+            this->NPath=npath;
+        }
+        move_command():command_strategy(){}
+        ~move_command(){};
         void setAll(pathInfo path, pathInfo npath){
             this->Path=path;
             this->NPath=npath;
@@ -1506,7 +1531,75 @@ void copyCommandHandler(string path, string next){
     }
 }
 
-void moveCommandHandler(string path, string next){}
+void moveCommandHandler(string path, string next){
+    pathInfo pi=analyzePath(path);
+    pathInfo ni=analyzePath(next);
+    move_command cd;    
+    switch (ni.type)
+    {
+    case pathType::Current :
+        cout<<"you must enter a path for move there!\n";
+        return;
+        break;
+    case pathType::File :
+    case pathType::PartitionRootWithFile :
+    case pathType::RelativePathWithFile :
+        cout <<"new path for move there can`t be a file path!\n";
+        return;
+        break;
+    case pathType::Invalid :
+        return;
+        break;
+    }
+    
+    switch (pi.type)
+    {
+    case pathType::Current :
+        cout<<"path is required!\n";
+        return;
+        break;
+    case pathType::Invalid :
+        return;
+        break;
+    case pathType::PartitionRoot :
+        if (pi.directories.size()== 0)
+        {
+            cout<<"you can`t move a partition!\n";
+            return;
+        }
+        if (isMathTwopath(pi.directories,ni.directories,1) && ni.type != pathType::RelativePath)
+        {
+            cout<<"you must enter a new path for move there!\n";
+            return;
+        }
+        cd.setAll(pi,ni);
+        cd.execute();
+        break;
+    case pathType::RelativePath :
+        if (isMathTwopath(pi.directories,ni.directories,1))
+        {
+            cout<<"you must enter a new path for move there!\n";
+            return;
+        }
+        cd.setAll(pi,ni);
+        cd.execute();
+        break;
+    case pathType::PartitionRootWithFile :
+    case pathType::RelativePathWithFile :
+        if (isMathTwopath(pi.directories,ni.directories))
+        {
+            cout<<"you must enter a new path for move there!\n";
+            return;
+        }
+        cd.setAll(pi,ni);
+        cd.execute();
+        break;
+    default:
+        cd.setAll(pi,ni);
+        cd.execute();
+        break;
+    }
+}
 
 
 //method file manger
@@ -1939,6 +2032,106 @@ void file_manager::findAndCopyNodeToNewPath(pathInfo pinfo, pathInfo npinfo){
     }
 
 }
+// find path and move to new path
+void file_manager::findAndMoveNodeToNewPath(pathInfo pinfo, pathInfo npinfo){
+    node_dir* currentDir=nullptr;
+    node_file* currentFile=nullptr;
+    node* find;
+    switch (pinfo.type)
+    {
+    case pathType::Directory :
+    case pathType::PartitionRoot :
+    case pathType::RelativePath :
+        find = this->findPathNode(pinfo);
+        if (node_dir* dir=dynamic_cast<node_dir*>(find))
+        {
+            currentDir=dir;
+        }else if (!find)
+        {
+            return;
+        }else{
+            throw invalid_argument("error in find node for copy\n");
+        }
+        break;
+    case pathType::File :
+        find = this->findPathNode(pinfo);
+        if (node_file* file = dynamic_cast<node_file*>(find))
+        {
+            currentFile=file;
+        }else if (!find)
+        {
+            return;
+        }else
+        {
+            throw invalid_argument("error in find node for copy\n");
+        }
+        break;
+    case pathType::PartitionRootWithFile :
+    case pathType::RelativePathWithFile :
+        find = this->findPathNode(pinfo);
+        if (node_dir* dir = dynamic_cast<node_dir*>(find))
+        {
+            find=this->findCurrentFile(pinfo.fileName,find);
+            if (node_file* file=dynamic_cast<node_file*>(find))
+            {
+                currentFile = file;
+            }else{
+                cout<<"can`t find file "<<pinfo.fileName<<" in path!\n";
+                return;
+            }
+        }else if (!find)
+        {
+            return;
+        }else
+        {
+            throw invalid_argument("error in find node for copy\n");
+        }
+        break;
+    }
+
+    find=nullptr;
+    switch (npinfo.type)
+    {
+    case pathType::Directory :
+    case pathType::PartitionRoot :
+    case pathType::RelativePath :
+        find=this->findPathNode(npinfo);
+        if (!find)
+        {
+            cout<<"yore new path dosen`t exist\n";
+            return;
+        }
+        if (currentDir)
+        {
+            node_dir* fd=this->findCurrentDirInChild(currentFile->getName(), find);
+            if (fd)
+            {
+                cout<<"directory "<<fd->getName()<<" alredy exist in this path!\n";
+                return;
+            }
+            cout<<"strat to move. please wait!\n";
+            currentDir->move(find);
+        }else if (currentFile)
+        {
+            node_file* ff=this->findCurrentFile(currentFile->getName(), find);
+            if (ff)
+            {
+                cout<<"file "<<ff->getName()<<" alredy exist in this path!\n";
+                return;
+            }
+            cout<<"strat to copy. please wait!\n";
+            currentFile->move(find);
+        }
+        break;
+    
+    default:
+        cout<<"error in new path for copy!\n";
+        return;
+        break;
+    }
+}
+
+
 
 /* get path and process to find node(file or directory) 
  there is process start from current node or root
@@ -2613,6 +2806,82 @@ void node_file::copyList(node* parent){
     }
     
 }
+// move node to parrent
+void node_file::move(node* parent){
+    node* p=this->getParent();
+    if (node_part* part=dynamic_cast<node_part*>(p))
+    {
+        if (part->getRight()==this)
+        {
+            part->setRight(this->getNext());
+            this->Next=nullptr;
+        }else {
+            node_file* befor = this->findBeforFile(this->getName());
+            if (befor)
+            {
+                befor->setNext(this->Next);
+                this->Next=nullptr;
+            }else{
+                cout<<"can`t find befor to move file\n";
+                return;
+            }
+        }
+        try
+        {
+            parent->add(this);
+            cout<<"done!\n";
+        }
+        catch(const std::exception& e)
+        {
+            std::cerr << e.what() << '\n';
+        }
+        
+    }else if (node_dir* dir = dynamic_cast<node_dir*>(p))
+    {
+        if (dir->getRight()==this)
+        {
+            dir->setRight(this->getNext());
+            this->Next=nullptr;
+        }else {
+            node_file* befor = this->findBeforFile(this->getName());
+            if (befor)
+            {
+                befor->setNext(this->Next);
+                this->Next=nullptr;
+            }else{
+                cout<<"can`t find befor to move file\n";
+                return;
+            }
+        }
+        try
+        {
+            parent->add(this);
+            cout<<"done!\n";
+        }
+        catch(const std::exception& e)
+        {
+            std::cerr << e.what() << '\n';
+        }
+    }
+    
+}
+// return befor node current node in list if current node first return null 
+node_file* node_file::findBeforFile(string name){
+    if (this->Name==name)
+    {
+        return nullptr;
+    }
+    node_file* current=this;
+    while (current->Next)
+    {
+        if (current->Next->Name==name)
+        {
+            return current;
+        }
+        current=current->Next;
+    }
+    return nullptr;
+}
 
 //methods class node_dir
 
@@ -2885,6 +3154,81 @@ void node_dir::copyList(node* parent){
         }
         current=current->getNext();
     }
+}
+// move current node to parrent`
+void node_dir::move(node* parent){
+    node* p=this->getParent();
+    if (node_part* part=dynamic_cast<node_part*>(p))
+    {
+        if (part->getLeft()==this)
+        {
+            part->setLeft(this->getNext());
+            this->Next=nullptr;
+        }else {
+            node_dir* befor = this->findBeforDir(this->getName());
+            if (befor)
+            {
+                befor->setNext(this->Next);
+                this->Next=nullptr;
+            }else{
+                cout<<"can`t find befor to move dir\n";
+                return;
+            }
+        }
+        try
+        {
+            parent->add(this);
+            cout<<"done!\n";
+        }
+        catch(const std::exception& e)
+        {
+            std::cerr << e.what() << '\n';
+        }
+        
+    }else if (node_dir* dir = dynamic_cast<node_dir*>(p))
+    {
+        if (dir->getLeft()==this)
+        {
+            dir->setLeft(this->getNext());
+            this->Next=nullptr;
+        }else {
+            node_dir* befor = this->findBeforDir(this->getName());
+            if (befor)
+            {
+                befor->setNext(this->Next);
+                this->Next=nullptr;
+            }else{
+                cout<<"can`t find befor to move file\n";
+                return;
+            }
+        }
+        try
+        {
+            parent->add(this);
+            cout<<"done!\n";
+        }
+        catch(const std::exception& e)
+        {
+            std::cerr << e.what() << '\n';
+        }
+    }
+}
+// return befor node current node in list if current node first return null 
+node_dir* node_dir::findBeforDir(string name){
+    if (this->Name==name)
+    {
+        return nullptr;
+    }
+    node_dir* current=this;
+    while (current->Next)
+    {
+        if (current->Next->Name == name)
+        {
+            return current;
+        }
+        current=current->Next;
+    }
+    return nullptr;
 }
 
 //methods class node partition
