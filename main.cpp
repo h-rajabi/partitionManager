@@ -99,6 +99,8 @@ parseInfo analyzeParse(string parse);
 void readFile(tree* t);
 
 bool isValidPath(const std::string &path);
+// get two vector directory and size first vector then check if all vector is match return true 
+bool isMathTwopath(vector<string> arr1, vector<string> arr2, int size=0);
 
 // analyze path function
 pathInfo analyzePath(string Path); 
@@ -211,7 +213,7 @@ class node_file : public node
             this->Next=nullptr;
         }
         ~node_file(){
-            delete Next;
+            deleteList();
         };
         bool isValidName(string name) override {
             regex partitionRegex("^[a-zA-Z0-9_-]+\\.[a-zA-Z0-9]+$");
@@ -229,6 +231,8 @@ class node_file : public node
         node_file* deleteFile(string name);
         void reNameFile(string name, string newName);
         void change(string size, string att, node_part* root);
+        void copy(node* parent);
+        void copyList(node* parent);
 };
 
 class node_dir: public node
@@ -269,6 +273,9 @@ class node_dir: public node
         void setNext(node_dir* next);
         void setLeft(node_dir* left);
         void setRight(node_file* right);
+        void setSize(int size){
+            this->Size=size;
+        }
         node_dir* getNext(){return this->Next;}
         node_dir* getLeft(){return this->Left;}
         node_file* getRight(){return this->Right;}
@@ -283,6 +290,8 @@ class node_dir: public node
         node_dir* deleteDir(string name);
         void reNameDir(string name, string newName);
         void change(string att);
+        void copy(node* parent);
+        void copyList(node* parent);
 };
 
 class node_part: public node
@@ -396,6 +405,7 @@ class file_manager
         void findAndRenamePath(pathInfo pinfo, string newName);//get path and rename node if exist if new name exist return error
         void findAndPrintTreeView(pathInfo pinfo);//find and print all sub tree view
         void findAndChangeNode(pathInfo pinfo, string size, string att);// find node and change
+        void findAndCopyNodeToNewPath(pathInfo pinfo, pathInfo npinfo);
 
         node* findPathNode(pathInfo pinfo);// get path and process for find path and return find node if find
         void setCurrentNodeToRoot();// set current node to root
@@ -584,10 +594,30 @@ class change_command : public command_strategy
         void execute() override;
 };
 
+class copy_command : public command_strategy
+{
+    private:
+        pathInfo Path;
+        pathInfo NPath;
+    public:
+        copy_command(pathInfo path,pathInfo npath):command_strategy(){
+            this->Path=path;
+            this->NPath=npath;
+        }
+        copy_command():command_strategy(){}
+        ~copy_command(){};
+        void setAll(pathInfo path, pathInfo npath){
+            this->Path=path;
+            this->NPath=npath;
+        }
+        void execute() override;
+};
+
+
 file_manager* file_manager::instance = nullptr;
 
 int main(){ 
-
+    
     try
     {   
         tree* t =new tree();
@@ -607,7 +637,6 @@ int main(){
         //     if (regex_match(s,onlyDigit))
         //     {
         //         cout<<"math"<<endl;
-        //         /* code */
         //     }else cout<<"not math\n";
             
         // }
@@ -637,6 +666,21 @@ bool isValidPath(const std::string &path) {
     }
 
     return false;
+}
+
+bool isMathTwopath(vector<string> arr1, vector<string> arr2, int size){
+    if (arr1.size() - size != arr2.size())
+    {
+        return false;
+    }
+    for (size_t i = 0; i < arr1.size() - size; i++)
+    {
+        if (arr1[i] != arr2[i])
+        {
+            return false;
+        }
+    }
+    return true;
 }
 
 // read file and create tree functions
@@ -1044,20 +1088,36 @@ void command(){
 
     string currentPathCopy,nextPathCopy;
     auto copyCommand=app.add_subcommand("Copy","copy file or directory to cpath");
-    copyCommand->add_option("path",currentPathCopy,"path to copy file or directory (if null copy current directory)");
+    copyCommand->add_option("path",currentPathCopy,"path to copy file or directory (if null copy current directory)")->required();
     copyCommand->add_option("tpath",nextPathCopy,"path to copy file or directory here")->required();
 
     copyCommand->callback([&](){
-
+        if (currentPathCopy==nextPathCopy)
+        {
+            cout<<"current path and copy path can`t be math\n";
+        }else
+        {
+            copyCommandHandler(currentPathCopy,nextPathCopy);
+        }
+        currentPathCopy.clear();
+        nextPathCopy.clear();
     });
 
     string currentPathMove,nextPathMove;
     auto moveCommand=app.add_subcommand("Move","move file or directory to move Path");
-    moveCommand->add_option("path",currentPathMove,"current path to move file or directory if null move current directory");
+    moveCommand->add_option("path",currentPathMove,"current path to move file or directory if null move current directory")->required();
     moveCommand->add_option("tpath",nextPathMove,"path for move here")->required();
 
     moveCommand->callback([&](){
-
+        if (currentPathMove==nextPathMove)
+        {
+            cout<<"current path and move path can`t be math\n";
+        }else
+        {
+            moveCommandHandler(currentPathMove,nextPathMove);
+        }
+        currentPathMove.clear();
+        nextPathMove.clear();
     });
 
 
@@ -1376,7 +1436,75 @@ void changeCommandHandler(string path, string size, string att){
     }
 }
 
-void copyCommandHandler(string path, string next){}
+void copyCommandHandler(string path, string next){
+    pathInfo pi=analyzePath(path);
+    pathInfo ni=analyzePath(next);
+    copy_command cd;    
+    switch (ni.type)
+    {
+    case pathType::Current :
+        cout<<"you must enter a path for copy there!\n";
+        return;
+        break;
+    case pathType::File :
+    case pathType::PartitionRootWithFile :
+    case pathType::RelativePathWithFile :
+        cout <<"new path for copy there can`t be a file path!\n";
+        return;
+        break;
+    case pathType::Invalid :
+        return;
+        break;
+    }
+    
+    switch (pi.type)
+    {
+    case pathType::Current :
+        cout<<"path is required!\n";
+        return;
+        break;
+    case pathType::Invalid :
+        return;
+        break;
+    case pathType::PartitionRoot :
+        if (pi.directories.size()== 0)
+        {
+            cout<<"you can`t copy a partition!\n";
+            return;
+        }
+        if (isMathTwopath(pi.directories,ni.directories,1) && ni.type != pathType::RelativePath)
+        {
+            cout<<"you must enter a new path for copy there!\n";
+            return;
+        }
+        cd.setAll(pi,ni);
+        cd.execute();
+        break;
+    case pathType::RelativePath :
+        if (isMathTwopath(pi.directories,ni.directories,1))
+        {
+            cout<<"you must enter a new path for copy there!\n";
+            return;
+        }
+        cd.setAll(pi,ni);
+        cd.execute();
+        break;
+    case pathType::PartitionRootWithFile :
+    case pathType::RelativePathWithFile :
+        if (isMathTwopath(pi.directories,ni.directories))
+        {
+            cout<<"you must enter a new path for copy there!\n";
+            return;
+        }
+        cd.setAll(pi,ni);
+        cd.execute();
+        break;
+    default:
+        cd.setAll(pi,ni);
+        cd.execute();
+        break;
+    }
+}
 
 void moveCommandHandler(string path, string next){}
 
@@ -1648,7 +1776,7 @@ void file_manager::findAndPrintTreeView(pathInfo pinfo){
         break;
     }
 }
-
+// find path and change node
 void file_manager::findAndChangeNode(pathInfo pinfo, string size, string att){
     node* find;
     string name;
@@ -1664,7 +1792,7 @@ void file_manager::findAndChangeNode(pathInfo pinfo, string size, string att){
             node_dir* dir=dynamic_cast<node_dir*>(find);
             dir->change(att);
         }else {
-            cout<<"cant find directory "<<name<<"!\n";
+            // cout<<"cant find directory "<<name<<"!\n";
             return;
         }
         break;
@@ -1692,6 +1820,124 @@ void file_manager::findAndChangeNode(pathInfo pinfo, string size, string att){
     default:
         break;
     }
+}
+// find path and copy to new path
+void file_manager::findAndCopyNodeToNewPath(pathInfo pinfo, pathInfo npinfo){
+    node_dir* currentDir=nullptr;
+    node_file* currentFile=nullptr;
+    node* find;
+    switch (pinfo.type)
+    {
+    case pathType::Directory :
+    case pathType::PartitionRoot :
+    case pathType::RelativePath :
+        find = this->findPathNode(pinfo);
+        if (node_dir* dir=dynamic_cast<node_dir*>(find))
+        {
+            currentDir=dir;
+        }else if (!find)
+        {
+            return;
+        }else{
+            throw invalid_argument("error in find node for copy\n");
+        }
+        break;
+    case pathType::File :
+        find = this->findPathNode(pinfo);
+        if (node_file* file = dynamic_cast<node_file*>(find))
+        {
+            currentFile=file;
+        }else if (!find)
+        {
+            return;
+        }else
+        {
+            throw invalid_argument("error in find node for copy\n");
+        }
+        break;
+    case pathType::PartitionRootWithFile :
+    case pathType::RelativePathWithFile :
+        find = this->findPathNode(pinfo);
+        if (node_dir* dir = dynamic_cast<node_dir*>(find))
+        {
+            find=this->findCurrentFile(pinfo.fileName,find);
+            if (node_file* file=dynamic_cast<node_file*>(find))
+            {
+                currentFile = file;
+            }else{
+                cout<<"can`t find file "<<pinfo.fileName<<" in path!\n";
+                return;
+            }
+        }else if (!find)
+        {
+            return;
+        }else
+        {
+            throw invalid_argument("error in find node for copy\n");
+        }
+        break;
+    }
+
+    if (currentDir)
+    {
+        if (!(this->Root->getRoot()->canFitSize(currentDir->getSize())))
+        {
+            cout<<"in partition not enugh size!\n";
+            return;
+        }
+    }
+    if (currentFile)
+    {
+        if (!(this->Root->getRoot()->canFitSize(currentFile->getSize())))
+        {
+            cout<<"in partition not enugh size!\n";
+            return;
+        }
+    }else{
+        cout<<"error in check size partition!\n";
+        return;
+    }
+    find=nullptr;
+    switch (npinfo.type)
+    {
+    case pathType::Directory :
+    case pathType::PartitionRoot :
+    case pathType::RelativePath :
+        find=this->findPathNode(npinfo);
+        if (!find)
+        {
+            cout<<"yore new path dosen`t exist\n";
+            return;
+        }
+        if (currentDir)
+        {
+            node_dir* fd=this->findCurrentDirInChild(currentFile->getName(), find);
+            if (fd)
+            {
+                cout<<"directory "<<fd->getName()<<" alredy exist in this path!\n";
+                return;
+            }
+            cout<<"strat to copy. please wait!\n";
+            currentDir->copy(find);
+        }else if (currentFile)
+        {
+            node_file* ff=this->findCurrentFile(currentFile->getName(), find);
+            if (ff)
+            {
+                cout<<"file "<<ff->getName()<<" alredy exist in this path!\n";
+                return;
+            }
+            cout<<"strat to copy. please wait!\n";
+            currentFile->copy(find);
+        }
+        break;
+    
+    default:
+        cout<<"error in new path for copy!\n";
+        return;
+        break;
+    }
+
 }
 
 /* get path and process to find node(file or directory) 
@@ -2139,6 +2385,20 @@ void treeView_command::execute(){
 // methods change command
 
 void change_command::execute(){
+    try
+    {
+        this->FileManager->findAndChangeNode(this->Path, this->Size, this->Att);
+    }
+    catch(const std::exception& e)
+    {
+        std::cerr << e.what() << '\n';
+    }
+    
+}
+
+// methods copy command
+
+void copy_command::execute(){
 
 }
 
@@ -2320,6 +2580,38 @@ void node_file::change(string size, string att, node_part* root){
             Att.setAttribute(h);
         }
     }
+}
+// copy current file to parrent
+void node_file::copy(node* parent){
+    node_file* newFile=new node_file(this->getName(), this->getSize(), this->getAttributes(), this->getDate());
+    try
+    {
+        parent->add(newFile);
+        cout<<"done!\n";
+    }
+    catch(const std::exception& e)
+    {
+        std::cerr << e.what() << '\n';
+    }
+    
+}
+// copy all sibling list file to parrent
+void node_file::copyList(node* parent){
+    node_file* current=this;
+    while (current)
+    {
+        node_file* newfile = new node_file(current->getName(),current->getSize(),current->getAttributes(),current->getDate());
+        try
+        {
+            parent->add(newfile);
+        }
+        catch(const std::exception& e)
+        {
+            std::cerr << e.what() << '\n';
+        }
+        current=current->getNext();
+    }
+    
 }
 
 //methods class node_dir
@@ -2543,6 +2835,55 @@ void node_dir::change(string att){
         {
             Att.setAttribute(h);
         }
+    }
+}
+// copy current node and set parent and recurecs function to copy childern 
+void node_dir::copy(node* parent){
+    node_dir* newDir= new node_dir(this->getName(), this->getAttributes(), this->getDate());
+    try
+    {    
+        parent->add(newDir);
+        if (this->getLeft())
+        {
+            this->getLeft()->copyList(newDir);
+        }
+        if (this->getRight())
+        {
+            this->getRight()->copyList(newDir);
+        }
+        cout<<"done.\n";
+    }
+    catch(const std::exception& e)
+    {
+        std::cerr << e.what() << '\n';
+    }
+    
+    
+    
+}
+// copy current node and all sibling list and childern
+void node_dir::copyList(node* parent){
+    node_dir* current=this;
+    while (current)
+    {
+        node_dir* newDir= new node_dir(current->getName(), current->getAttributes(), current->getDate());
+        try
+        {
+            parent->add(newDir);
+            if (current->getLeft())
+            {
+                current->getLeft()->copyList(newDir);
+            }
+            if (current->getRight())
+            {
+                current->getRight()->copyList(newDir);
+            }
+        }
+        catch(const std::exception& e)
+        {
+            std::cerr << e.what() << '\n';
+        }
+        current=current->getNext();
     }
 }
 
