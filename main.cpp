@@ -424,6 +424,12 @@ class file_manager
         void createAndAddtoTree(string name, string size, string att, node* parrent);
         void addToTree(node* parent, node* current);
         void reNameNodeInChilds(pathInfo pinfo, node* parent, string newName, string name);
+        void backToParent(){
+            if (CurrentNode->getParent())
+            {
+                CurrentNode=CurrentNode->getParent();
+            }
+        }
 };
 
 // strategy interface
@@ -908,7 +914,12 @@ pathInfo analyzePath(string Path) {
 
     pathInfo info = {Invalid, "", {}, ""};
     path p(Path);
-
+    if (Path.empty() || Path==" ")
+    {
+        info.type=pathType::Current;
+        return info;
+    }
+    
     regex windowspartition("^[a-zA-Z]:/.*");
     if (regex_match(Path,windowspartition))
     {   
@@ -1117,6 +1128,11 @@ void command(){
     copyCommand->add_option("tpath",nextPathCopy,"path to copy file or directory here")->required();
 
     copyCommand->callback([&](){
+        if (currentPathCopy.empty() || nextPathCopy.empty()) {
+            std::cout << "Error: Paths cannot be empty." << std::endl;
+            return;
+        }
+
         if (currentPathCopy==nextPathCopy)
         {
             cout<<"current path and copy path can`t be math\n";
@@ -1145,6 +1161,11 @@ void command(){
         nextPathMove.clear();
     });
 
+    auto clearCommand=app.add_subcommand("clear","clear bash");
+    clearCommand->callback([&](){
+        system("clear");
+    });
+
 
     string input;
     cout << "File Manager CLI" << endl;
@@ -1164,6 +1185,7 @@ void command(){
             app.parse(input);
         } catch (const CLI::ParseError& e) {
             cout << "Error: " << e.get_name() << endl;
+            cout <<app.help();
         }
         
     }
@@ -1177,6 +1199,11 @@ void cdCommandHandler(string path){
         pi={pathType::Current,"",{},""};
         cd.setPath(pi);
         cd.execute();
+    }else if (path=="../")
+    {
+        file_manager* fm = file_manager::getInstance();
+        fm->backToParent();
+        fm->setPath();
     }
     else{
         pi=analyzePath(path);
@@ -1398,6 +1425,7 @@ void treeViewCommandHandler(string path){
     pathInfo pi;
     treeView_command cd;
     pi=analyzePath(path);
+    cout<<pi.type<<endl;
     switch (pi.type)
     {
     case pathType::Invalid :
@@ -1978,8 +2006,7 @@ void file_manager::findAndCopyNodeToNewPath(pathInfo pinfo, pathInfo npinfo){
             cout<<"in partition not enugh size!\n";
             return;
         }
-    }
-    if (currentFile)
+    }else if (currentFile)
     {
         if (!(this->Root->getRoot()->canFitSize(currentFile->getSize())))
         {
@@ -1996,6 +2023,7 @@ void file_manager::findAndCopyNodeToNewPath(pathInfo pinfo, pathInfo npinfo){
     case pathType::Directory :
     case pathType::PartitionRoot :
     case pathType::RelativePath :
+        cout<<npinfo.partition<<endl;
         find=this->findPathNode(npinfo);
         if (!find)
         {
@@ -2004,7 +2032,7 @@ void file_manager::findAndCopyNodeToNewPath(pathInfo pinfo, pathInfo npinfo){
         }
         if (currentDir)
         {
-            node_dir* fd=this->findCurrentDirInChild(currentFile->getName(), find);
+            node_dir* fd=this->findCurrentDirInChild(currentDir->getName(), find);
             if (fd)
             {
                 cout<<"directory "<<fd->getName()<<" alredy exist in this path!\n";
@@ -2103,7 +2131,7 @@ void file_manager::findAndMoveNodeToNewPath(pathInfo pinfo, pathInfo npinfo){
         }
         if (currentDir)
         {
-            node_dir* fd=this->findCurrentDirInChild(currentFile->getName(), find);
+            node_dir* fd=this->findCurrentDirInChild(currentDir->getName(), find);
             if (fd)
             {
                 cout<<"directory "<<fd->getName()<<" alredy exist in this path!\n";
@@ -2592,7 +2620,27 @@ void change_command::execute(){
 // methods copy command
 
 void copy_command::execute(){
+    try
+    {
+        this->FileManager->findAndCopyNodeToNewPath(this->Path, this->NPath);
+    }
+    catch(const std::exception& e)
+    {
+        std::cerr << e.what() << '\n';
+    }
+    
+}
 
+void move_command::execute(){
+    try
+    {
+        this->FileManager->findAndMoveNodeToNewPath(this->Path, this->NPath);
+    }
+    catch(const std::exception& e)
+    {
+        std::cerr << e.what() << '\n';
+    }
+    
 }
 
 //methods class attributesManager
