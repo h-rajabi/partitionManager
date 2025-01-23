@@ -24,7 +24,7 @@ enum attributes {
     w = 1 << 1, //0010 Write
     h = 1 << 2 //0100  Hidden
 };
-// درست کردن ولیدیشن برای برسی همزمان فعال بودن خواندن و نوشتن
+
 class attributesManager
 {
     private:
@@ -264,9 +264,9 @@ class node_dir: public node
             this->Right=NULL;
         }
         ~node_dir(){
-            delete Next;
-            delete Left;
-            delete Right;
+            deleteList();
+            Left->deleteList();
+            Right->deleteList();
         };
         bool isValidName(string name) override {
             regex partitionRegex("^[a-zA-Z0-9_-]+$");
@@ -313,9 +313,8 @@ class node_part: public node
             this->Next=NULL;
         }
         ~node_part(){
-            delete Left;
-            delete Right;
-            delete Next;
+            Left->deleteList();
+            Right->deleteList();
         };
         bool isValidName(string name) override {
             regex partitionRegex("^[a-zA-Z0-9_-]+:$");
@@ -1425,7 +1424,6 @@ void treeViewCommandHandler(string path){
     pathInfo pi;
     treeView_command cd;
     pi=analyzePath(path);
-    cout<<pi.type<<endl;
     switch (pi.type)
     {
     case pathType::Invalid :
@@ -2078,7 +2076,7 @@ void file_manager::findAndMoveNodeToNewPath(pathInfo pinfo, pathInfo npinfo){
         {
             return;
         }else{
-            throw invalid_argument("error in find node for copy\n");
+            throw invalid_argument("error in find node for move\n");
         }
         break;
     case pathType::File :
@@ -2091,7 +2089,7 @@ void file_manager::findAndMoveNodeToNewPath(pathInfo pinfo, pathInfo npinfo){
             return;
         }else
         {
-            throw invalid_argument("error in find node for copy\n");
+            throw invalid_argument("error in find node for move\n");
         }
         break;
     case pathType::PartitionRootWithFile :
@@ -2147,7 +2145,7 @@ void file_manager::findAndMoveNodeToNewPath(pathInfo pinfo, pathInfo npinfo){
                 cout<<"file "<<ff->getName()<<" alredy exist in this path!\n";
                 return;
             }
-            cout<<"strat to copy. please wait!\n";
+            cout<<"strat to move. please wait!\n";
             currentFile->move(find);
         }
         break;
@@ -2864,7 +2862,7 @@ void node_file::move(node* parent){
             part->setRight(this->getNext());
             this->Next=nullptr;
         }else {
-            node_file* befor = this->findBeforFile(this->getName());
+            node_file* befor = part->getRight()->findBeforFile(this->getName());
             if (befor)
             {
                 befor->setNext(this->Next);
@@ -2891,7 +2889,7 @@ void node_file::move(node* parent){
             dir->setRight(this->getNext());
             this->Next=nullptr;
         }else {
-            node_file* befor = this->findBeforFile(this->getName());
+            node_file* befor = dir->getRight()->findBeforFile(this->getName());
             if (befor)
             {
                 befor->setNext(this->Next);
@@ -3213,7 +3211,7 @@ void node_dir::move(node* parent){
             part->setLeft(this->getNext());
             this->Next=nullptr;
         }else {
-            node_dir* befor = this->findBeforDir(this->getName());
+            node_dir* befor = part->getLeft()->findBeforDir(this->getName());
             if (befor)
             {
                 befor->setNext(this->Next);
@@ -3240,7 +3238,7 @@ void node_dir::move(node* parent){
             dir->setLeft(this->getNext());
             this->Next=nullptr;
         }else {
-            node_dir* befor = this->findBeforDir(this->getName());
+            node_dir* befor = dir->getLeft()->findBeforDir(this->getName());
             if (befor)
             {
                 befor->setNext(this->Next);
